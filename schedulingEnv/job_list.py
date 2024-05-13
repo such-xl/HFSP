@@ -1,9 +1,11 @@
 '''
     作业链表类
 '''
+from utils import DoublyLinkList
 from job import Job
-class JobList():
+class JobList(DoublyLinkList):
     def __init__(self) -> None:
+        super().__init__()
         self._job_list: list[Job] = []
         self._job_num = 0
         self._machine_num = 0
