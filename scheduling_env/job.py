@@ -1,4 +1,4 @@
-from utils import Node
+from .utils import Node
 class Job(Node):
     def __init__(self,id:int,process_num:int,process_list:list) -> None:
         super().__init__(None)
@@ -7,14 +7,14 @@ class Job(Node):
         self._process_list = process_list       #job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         self._progess = 1                       # 加工进度 代表第progess道工序待加工，0 代表加工完成
         self._machine_id = 0                     # 正在加工该job的机器id，0表示目前没有被加工
-        self._T_process = -1                    # 当前工序需被加工的时间
-        self._T_processed = -1                  # 当前工序已经被加工时间
+        self._T_process = 0                    # 当前工序需被加工的时间
+        self._T_processed = 0                  # 当前工序已经被加工时间
+
     def show(self):
         print(f'作业{self._id} 工序数{self._process_num}')
         for i,p in enumerate(self._process_list,start=1):
             print(f'工序{i}')
             print(p)
- 
     def is_complete(self) -> bool:
         return self._progess == 0 
 

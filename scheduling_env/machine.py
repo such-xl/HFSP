@@ -1,5 +1,5 @@
 import random
-from utils import Node
+from .utils import Node
 class Machine(Node):
     def __init__(self,id:int,actions:list,status:int,brain:dict) -> None:
         '''

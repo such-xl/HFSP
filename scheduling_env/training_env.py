@@ -3,8 +3,8 @@
     1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
     2: 判断所有job是否完成 over if done else repeat 1
 '''
-from job_list import JobList
-from machine_list import MachineList
+from .job_list import JobList
+from .machine_list import MachineList
 class TrainingEnv():
     # 初始化环境
     def __init__(self) -> None:
@@ -14,7 +14,7 @@ class TrainingEnv():
         self._completed_jobs = JobList()
         self._uncompleted_jobs = JobList()
         self._busy_agent = MachineList(0)
-        self._fault_agent = MachineList(0)
+        self._faulty_agent = MachineList(0)
         self._idle_agent = None
         
     def get_jobs_from_file(self, jobs_path:str):
@@ -25,7 +25,35 @@ class TrainingEnv():
     # 
     def step(self):
         pass
-
+    @property
+    def action_space(self):
+        return self._action_space
+    @property
+    def agents_num(self):
+        return self._agents_num
+    @property
+    def jobs_num(self):
+        return self._jobs_num
+    @property
+    def agent_num(self):
+        return self._agent_num
+    @property
+    def completed_jobs(self):
+        return self._completed_jobs
+    @property
+    def uncompleted_jobs(self):
+        return self._uncompleted_jobs
+    @property
+    def busy_agent(self):
+        return self._busy_agent
+    @property
+    def faulty_agent(self):
+        return self._faulty_agent
+    @property
+    def idle_agent(self):
+        return self._idle_agent
+    
+'''
 env = TrainingEnv()
 
 env.get_jobs_from_file('data/Job_Data/Barnes/Text/mt10c1.fjs')
@@ -36,3 +64,5 @@ while c_n:
     c_n = c_n.next
 print(env._uncompleted_jobs._job_num)
     
+
+'''

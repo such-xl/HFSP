@@ -1,8 +1,8 @@
 '''
     作业链表类
 '''
-from utils import DoublyLinkList
-from job import Job
+from .utils import DoublyLinkList
+from .job import Job
 class JobList(DoublyLinkList):
     def __init__(self) -> None:
         super().__init__()
@@ -45,7 +45,7 @@ class JobList(DoublyLinkList):
     @property
     def head(self):
         return self._head    
-
+'''
 jl = JobList()
 jl.decode_job_flie('data/Job_Data/Barnes/Text/mt10c1.fjs')
 c_n = jl._head
@@ -53,3 +53,5 @@ while c_n:
     c_n.show()
     c_n = c_n.next
 print(jl._job_num)
+
+'''
