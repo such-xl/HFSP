@@ -2,8 +2,8 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import os
-from schedulingEnv.job import JobList
-from schedulingEnv.machine import MachineList
+from scheduling_env.job import JobList
+from scheduling_env.machine import MachineList
 import time
 class ScheduleEnv(gym.Env):
     def __init__(self):

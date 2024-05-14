@@ -1,19 +1,20 @@
 import random
-class Machine():
-    def __init__(self,ID:int,actions:list,status:int,brain:dict) -> None:
+from utils import Node
+class Machine(Node):
+    def __init__(self,id:int,actions:list,status:int,brain:dict) -> None:
         '''
             status: 0:break, 1:idle, 2:working
         '''
-        self._ID = ID
+        super().__init__(None)
+        self._id = id
         self._actions=actions
         self._status = status
         self._brain = brain
 
 
-        self._jobID = -1
-        self._jobProcess = -1
-        self._T_process = -1
-        self._T_processed = -1
+        self._job_id = -1               #该机器正常加工的job的id
+        self._t_process = -1            #当前加工的工序需要的加工时间
+        self._t_processed = -1          #目前已经加工当前工序的时间
 
 
     def sampleActiom(self,actions):
@@ -46,11 +47,11 @@ class Machine():
         self._T_processed = 0
         self._status = 2
     @property
-    def ID(self):
-        return self._ID
-    @ID.setter
-    def ID(self, ID):
-        self._ID = ID
+    def id(self):
+        return self._id
+    @id.setter
+    def id(self, id):
+        self._id = id 
     @property
     def actions(self):
         return self._actions
@@ -70,24 +71,21 @@ class Machine():
     def brain(self, brain):
         self._brain = brain
     @property
-    def T_process(self):
-        return self._T_process
-    @T_process.setter
-    def T_process(self, T_process):
-        self._T_process = T_process
+    def t_process(self):
+        return self._t_process
+    @t_process.setter
+    def T_process(self, t_process):
+        self._t_process = t_process
     @property
-    def T_processed(self):
-        return self._T_processed
-    @T_processed.setter
-    def T_processed(self, T_processed):
-        self._T_processed = T_processed
+    def t_processed(self):
+        return self._t_processed
+    @t_processed.setter
+    def T_processed(self, t_processed):
+        self._T_processed = t_processed
     @property
-    def jobID(self):
-        return self._jobID
+    def job_id(self):
+        return self._job_id
+    @job_id.setter
+    def job_id(self,job_id):
+        self._job_id = job_id
 
-class MachineList():
-    def __init__(self, machineNum) -> None:
-        self._machineList = [Machine(i,[],1,{}) for i in range(1,machineNum+1)]
-    @property
-    def machineList(self):
-        return self._machineList

@@ -50,9 +50,26 @@ class DoublyLinkList:
         if node is self._tail:
             self._tail = node.prev
         del node
+    # 将node节点在链上脱离，不删除该节点
+    def disengage_node(self,node:Node):
+        if node.prev:
+            node.prev.next = node.next
+        if node.next:
+            node.next.prev = node.prev
+        if node is self._head:
+            self._head = node.next
+        if node is self._tail:
+            self._tail = node.prev
+        return True
     def print_list(self) -> None:
         temp = self._head
         while temp:
             print(temp.data, end=" ")
             temp = temp.next
-        print()        
+        print()
+    @property
+    def head(self):
+        return self._head
+    @property
+    def tail(self):
+        return self._tail     
