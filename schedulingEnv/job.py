@@ -1,11 +1,10 @@
 from utils import Node
 class Job(Node):
     def __init__(self,id:int,process_num:int,process_list:list) -> None:
-        super().__init__()
+        super().__init__(None)
         self._id = id #job序号,从1开始
         self._process_num = process_num         #job工序数
         self._process_list = process_list       #job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
-        #self._status = 0                       # 0 未完成, 1 已完成
         self._progess = 1                       # 加工进度 代表第progess道工序待加工，0 代表加工完成
         self._machine_id = 0                     # 正在加工该job的机器id，0表示目前没有被加工
         self._T_process = -1                    # 当前工序需被加工的时间

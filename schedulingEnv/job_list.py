@@ -6,16 +6,10 @@ from job import Job
 class JobList(DoublyLinkList):
     def __init__(self) -> None:
         super().__init__()
-        self._job_list: list[Job] = []
         self._job_num = 0
         self._machine_num = 0
-        self._head = None
     
-    # 从链表头部插入job
-    def prepend(self, job: Job):
-        job.next = self._head
-        self._head = job
-        self._job_num += 1
+
     # 从文件中获取作业信息
     def decode_job_flie(self,path:str):
         with open(path,'r') as f:
@@ -40,7 +34,8 @@ class JobList(DoublyLinkList):
                     r += 1
                     i  += (1+line[i]*2)
  
-                self.prepend(Job(job_id,r-1,procs))
+                #self.prepend(Job(job_id,r-1,procs))
+                self.append(Job(job_id,r-1,procs))
     @property
     def job_num(self):
         return self._job_num    
