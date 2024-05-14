@@ -13,15 +13,35 @@ class TrainingEnv():
         self._jobs_num  = 0         #总作业数
         self._completed_jobs = JobList()
         self._uncompleted_jobs = JobList()
-        self._busy_agent = MachineList(0)
-        self._faulty_agent = MachineList(0)
-        self._idle_agent = None
+        self._pending_jobs = JobList()
+        self._in_progress_jobs = JobList()
+        self._busy_agents = MachineList(0)
+        self._faulty_agents = MachineList(0)
+        self._idle_agents = None
         
     def get_jobs_from_file(self, jobs_path:str):
         self._uncompleted_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._uncompleted_jobs.job_num
         self._agent_num = self._uncompleted_jobs.machine_num
         self._idle_agent = MachineList(self._agent_num)
+    
+    # 所有忙碌agent和job更新一个time step
+    def run_a_time_step(self):
+        in_progress_job = self._in_progress_jobs._head
+        idle_agent = self._idle_agent._head
+        # 显然，忙碌agent与处理中的job数量总是一致的，所有可以用一个循环处理
+        while in_progress_job and idle_agent:
+            in_progress_job.run_a_time_step()
+            idle_agent.run_a_time_step()
+
+            if in_progress_job.status == 1
+                
+            if in_progress_job.is_completed():
+                self._completed_jobs.append(in_progress_job)
+                self._in_progress_jobs.remove(in_progress_job)
+                idle_agent.append(in_progress_job)
+            in_progress_job = in_progress_job.next
+            idle_agent = idle_agent.next
     # 
     def step(self):
         pass

@@ -6,9 +6,10 @@ class Job(Node):
         self._process_num = process_num         #job工序数
         self._process_list = process_list       #job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         self._progess = 1                       # 加工进度 代表第progess道工序待加工，0 代表加工完成
+        self._status = 0                        # 0 已完成   1 加工中  2待加工
         self._machine_id = 0                     # 正在加工该job的机器id，0表示目前没有被加工
-        self._T_process = 0                    # 当前工序需被加工的时间
-        self._T_processed = 0                  # 当前工序已经被加工时间
+        self._t_process = 0                    # 当前工序需被加工的时间
+        self._t_processed = 0                  # 当前工序已经被加工时间
 
     def show(self):
         print(f'作业{self._id} 工序数{self._process_num}')
@@ -27,21 +28,25 @@ class Job(Node):
             print(f'job{self._id} --- status{self._status}')
             input()
         return k
-    def getTProcess(self,machineID):
-        return self.process_list.matchMachine(machineID)
+
+
     def load(self,machineID):
         self._machine_id = machineID
         self._T_process = self.getTProcess(machineID)
         self._T_processed = 0
-    def processingOneStep(self):
-        self._T_processed += 1
-        #print(f'job:{self._T_process,self._T_processed}')
-        if self._T_processed == self._T_process:
-            self._T_processed = -1
-            self._T_process = -1
-            self._machine_id = -1
-            self._process_list.updateStatus()
-            self._status = 1
+    def run_a_time_step(self):
+        self._t_processed += 1
+        if self._t_processed == self._t_process:        #当前工序加工完成
+            self._t_processed = 0
+            self._t_process = 0
+            self._machine_id = 0
+            self._progess +=1
+            if self._progess == self._process_num+1:    # 最后一道工序加工完成
+                self._progess = 0
+                self._status = 0
+            else:
+                self._status = 2
+    
     @property
     def id(self):
         return self._id
@@ -52,8 +57,17 @@ class Job(Node):
     def process_list(self):
         return self._process_list
     @property
+    def progress(self):
+        return self._progress
+    @property
     def status(self):
         return self._status
     @property
     def machine_id(self):
         return self._machine_id
+    @property
+    def t_process(self):
+        return self._t_process
+    @property
+    def t_processed(self):
+        return self._t_processed

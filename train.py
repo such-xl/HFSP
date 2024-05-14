@@ -12,9 +12,7 @@ time_step = 0                   #时序
 while flag:
     print(f'time_step:{time_step}')
     # busy_agent加工一个time_step
-    head = env.busy_agent.head
-    while head:
-        
+    obs,done = env.working_one_time_step()
 
 
     # 后让idle_agent选择一个动作

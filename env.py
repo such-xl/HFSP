@@ -12,6 +12,8 @@ class ScheduleEnv(gym.Env):
         self._observation_spaces = None  #
         self._jobList = JobList()
         self._machineList = any
+
+
     def step(self,machine,act):
         # 根据智能体动作更新环境状态并返回每个智能体的观测、奖励、done、info
         obs = []
