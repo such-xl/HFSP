@@ -7,18 +7,16 @@ class Machine(Node):
         '''
         super().__init__(None)
         self._id = id
-        self._actions=actions
+        self._actions = actions
         self._status = status
         self._brain = brain
-
-
         self._job_id = 0               #该机器正常加工的job的id
         self._t_process = 0            #当前加工的工序需要的加工时间
         self._t_processed = 0          #目前已经加工当前工序的时间
 
-
-    def sampleActiom(self,actions):
-        return random.randint(0,len(actions)-1) 
+    #从动作空间中采样一个动作
+    def sample_action(self,obs,act_jos,act_jos_id):
+        return random.randint(0,len(act_jos)-1)
     def show(self):
         print(f'机器{self.ID},状态{self._status}',end=' ')
         if self._status == 2:

@@ -18,18 +18,28 @@ class TrainingEnv():
         self._in_progress_jobs = JobList()
         self._busy_agents = MachineList(0)
         self._faulty_agents = MachineList(0)
-        self._idle_agents = None
+        self._idle_agents:MachineList = None
         
     def get_jobs_from_file(self, jobs_path:str):
-        self._pending_jobs.decode_job_flie(jobs_path)
-        self._jobs_num = self._pending_jobs.job_num
-        self._agent_num = self._pending_jobs.machine_num
-        self._idle_agent = MachineList(self._agent_num)
-    
+        self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
+        self._jobs_num = self._pending_jobs.length
+        self._idle_agents = MachineList(self._agents_num)
+    def get_agent_actions(self,agent_id):
+        act_jobs,act_jobs_id = [None],[0]               #第一个动作是idle    
+        pending_job = self._pending_jobs.head
+        while pending_job:
+            if pending_job.match_machine(agent_id):             #该job可被当前agent加工
+                act_jobs.append(pending_job)
+                act_jobs_id.append(pending_job.id)
+            pending_job = pending_job.next
+        return act_jobs,act_jobs_id
+         
     # 所有忙碌agent和job更新一个time step
     def run_a_time_step(self):
+        obs = []
+        done = False
         in_progress_job = self._in_progress_jobs._head
-        busy_agent = self._idle_agent._head
+        busy_agent = self._idle_agents._head
         # 显然，忙碌agent与处理中的job数量总是一致的，所有可以用一个循环处理
         while in_progress_job and busy_agent:
             in_progress_job.run_a_time_step()
@@ -52,7 +62,7 @@ class TrainingEnv():
             if busy_agent.status == 2:          #工序加工结束，转到idle
                 next_agent = busy_agent.next
                 self._busy_agents.disengage_node(busy_agent)
-                self._idle_agent.append(busy_agent)
+                self._idle_agents.append(busy_agent)
                 busy_agent = next_agent
             elif busy_agent.status == 0:        #故障，相应处理，
                 next_agent = busy_agent.next
@@ -64,10 +74,37 @@ class TrainingEnv():
                 busy_agent = next_agent
             else:                               #当前时序，未加工完成
                 busy_agent = busy_agent.next
+        if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
+            done = True
+        return obs,done
                                 
+        
     # 
-    def step(self):
-        pass
+    def step(self,idle_machine,action,act_jobs):
+        obs = []
+        reward = []
+        done = False
+        info = []
+        print(action,end='  ')
+        print(len(act_jobs))
+        if action == 0:         #机器选择空闲,对环境不产生影响
+
+            pass
+        else:
+            # machine load job
+            act_jobs[action].load_to_machine(idle_machine.id)
+            idle_machine.load_job(act_jobs[action].id,act_jobs[action].get_t_process(idle_machine.id))
+            # 节点转移
+            self._idle_agents.disengage_node(idle_machine)
+            self._busy_agents.append(idle_machine)
+
+            self._pending_jobs.disengage_node(act_jobs[action])
+            self.in_progress_jobs.append(act_jobs[action])
+
+        if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
+            done = True
+        return obs,reward,done,info
+
     @property
     def action_space(self):
         return self._action_space
@@ -84,17 +121,20 @@ class TrainingEnv():
     def completed_jobs(self):
         return self._completed_jobs
     @property
-    def uncompleted_jobs(self):
-        return self._uncompleted_jobs
+    def pending_jobs(self):
+        return self._pending_jobs
     @property
-    def busy_agent(self):
-        return self._busy_agent
+    def in_progress_jobs(self):
+        return self._in_progress_jobs
     @property
-    def faulty_agent(self):
-        return self._faulty_agent
+    def faulty_agents(self):
+        return self._faulty_agents
     @property
-    def idle_agent(self):
-        return self._idle_agent
+    def idle_agents(self):
+        return self._idle_agents
+    @property
+    def busy_agents(self):
+        return self._busy_agents
     
 '''
 env = TrainingEnv()
@@ -107,5 +147,4 @@ while c_n:
     c_n = c_n.next
 print(env._uncompleted_jobs._job_num)
     
-
 '''

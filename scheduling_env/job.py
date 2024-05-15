@@ -20,6 +20,10 @@ class Job(Node):
     def get_t_process(self, machine_id):
         return self._process_list[self._progess-1][machine_id]
     
+    # 判断当前工序是否可被agent_i执行
+    def match_machine(self,machine_id) -> bool:
+        return machine_id in self._process_list[self._progess-1]
+    
     # 将job装载至machine
     def load_to_machine(self,machine_id):
         self._machine_id = machine_id

@@ -38,3 +38,8 @@ print(arr)
 print(arr2)
 exchange(c,d)
 print(c,d) 
+
+dd = {1:1,2:2,3:3,6:5}
+print( 1 in dd)
+print(6 in dd)
+print(5 in dd)

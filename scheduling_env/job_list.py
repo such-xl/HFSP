@@ -5,16 +5,14 @@ from .utils import DoublyLinkList
 from .job import Job
 class JobList(DoublyLinkList):
     def __init__(self) -> None:
-        super().__init__()
-        self._job_num = 0
-        self._machine_num = 0
-    
+        super().__init__() 
 
     # 从文件中获取作业信息
     def decode_job_flie(self,path:str):
+        machine_num: int = 0
         with open(path,'r') as f:
 
-            _,self._machine_num = map(int,f.readline().split()[0:-1])
+            _,machine_num = map(int,f.readline().split()[0:-1])
 
             for job_id, line_str in enumerate(f, start=1):   
                         
@@ -36,22 +34,6 @@ class JobList(DoublyLinkList):
  
                 #self.prepend(Job(job_id,r-1,procs))
                 self.append(Job(job_id,r-1,procs))
-    @property
-    def job_num(self):
-        return self._job_num    
-    @property
-    def machine_num(self):
-        return self._machine_num
-    @property
-    def head(self):
-        return self._head    
-'''
-jl = JobList()
-jl.decode_job_flie('data/Job_Data/Barnes/Text/mt10c1.fjs')
-c_n = jl._head
-while c_n:
-    c_n.show()
-    c_n = c_n.next
-print(jl._job_num)
+        return machine_num
+                
 
-'''

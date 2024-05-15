@@ -25,7 +25,7 @@ class DoublyLinkList:
     def __init__(self) -> None:
         self._head = None
         self._tail = None
-    
+        self._length = 0 
     def append(self,node:any) -> None:
         if self._head is None:
             node.prev = node.next = None
@@ -34,6 +34,7 @@ class DoublyLinkList:
             self._tail.next = node
             self._tail.next.prev = self._tail
             self._tail = self._tail.next
+        self._length+=1
     def prepend(self, node:any) -> None:
         if self._head is None:
             self._head = self._tail = node
@@ -41,6 +42,7 @@ class DoublyLinkList:
             self._head.prev = node
             self._head.prev.next = self.head
             self._head = self.head.prev
+        self._length+=1
     def delete(self,node:Node):
         if node.prev:
             node.prev.next = node.next
@@ -50,6 +52,7 @@ class DoublyLinkList:
             self._head = node.next
         if node is self._tail:
             self._tail = node.prev
+        self._length -= 1
         del node
     # 将node节点在链上脱离，不删除该节点
     def disengage_node(self,node:Node):
@@ -62,6 +65,7 @@ class DoublyLinkList:
         if node is self._tail:
             self._tail = node.prev
         node.prev = node.next = None
+        self._length -= 1
         return True
     def print_list(self) -> None:
         temp = self._head
@@ -74,4 +78,7 @@ class DoublyLinkList:
         return self._head
     @property
     def tail(self):
-        return self._tail     
+        return self._tail
+    @property
+    def length(self):
+        return self._length     
