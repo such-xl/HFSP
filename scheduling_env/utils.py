@@ -28,6 +28,7 @@ class DoublyLinkList:
     
     def append(self,node:any) -> None:
         if self._head is None:
+            node.prev = node.next = None
             self._head = self._tail = node
         else:
             self._tail.next = node
@@ -60,6 +61,7 @@ class DoublyLinkList:
             self._head = node.next
         if node is self._tail:
             self._tail = node.prev
+        node.prev = node.next = None
         return True
     def print_list(self) -> None:
         temp = self._head

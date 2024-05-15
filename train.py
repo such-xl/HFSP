@@ -12,12 +12,17 @@ time_step = 0                   #时序
 while flag:
     print(f'time_step:{time_step}')
     # busy_agent加工一个time_step
-    obs,done = env.working_one_time_step()
-
-
+    obs,done = env.run_a_time_step()
     # 后让idle_agent选择一个动作
-
-
+    idle_agent = env.idle_agent.head
+    while idle_agent:                       #遍历所有idle agent
+        next_agent = idle_agent.next
+        act_jobs,act_jobs_id = env.get_agent_actions(idle_agent.id)   #获取agent的动作
+        action = idle_agent.sample_actions(obs,act_jobs,act_jobs_id)  #采样一个动作
+        obs,reward,done,info = env.step(idle_agent.id,action)         #执行动作
+        if done:            #所有作业完成
+            flag = False
+        idle_agent = next_agent
 
 
 

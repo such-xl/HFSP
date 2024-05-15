@@ -12,9 +12,9 @@ class Machine(Node):
         self._brain = brain
 
 
-        self._job_id = -1               #该机器正常加工的job的id
-        self._t_process = -1            #当前加工的工序需要的加工时间
-        self._t_processed = -1          #目前已经加工当前工序的时间
+        self._job_id = 0               #该机器正常加工的job的id
+        self._t_process = 0            #当前加工的工序需要的加工时间
+        self._t_processed = 0          #目前已经加工当前工序的时间
 
 
     def sampleActiom(self,actions):
@@ -24,28 +24,24 @@ class Machine(Node):
         if self._status == 2:
             print(f'已经加工作业{self._jobID}的第{self._jobProcess}工序{self._T_processed}s,剩余{self._T_process-self._T_processed}')
         print()
-    def isIdle(self):
-        return self.status == 1
-    def isBusy(self):
-        return self.status == 2
-     
-    def processingOneStep(self):
-        self._T_processed += 1 
-        #print(f'machine:{self._T_process,self._T_processed}')
-        if self._T_processed == self._T_process:
-            self._jobID = -1
-            self._jobProcess = -1
-            self._T_processed = -1
-            self._T_process = -1
-            self._status = 1
-            return True 
-        return False
-    def execute(self,jobID,jobProcess,T_process):
-        self._jobID = jobID
-        self._jobProcess = jobProcess
-        self._T_process = T_process
-        self._T_processed = 0
+
+    # 装载job
+    def load_job(self,job_id,t_process):
+        self._job_id = job_id
+        self._t_process = t_process
+        self._t_processed = 0
         self._status = 2
+    # 运行一个时序
+    def run_a_time_step(self):
+        '''
+            这里可添加机器故障
+        '''
+        self._t_processed += 1
+        if self._t_processed == self._t_process: #该工序加工完成
+            self._job_id = 0
+            self._t_process = 0
+            self._t_processed = 0
+            self._status = 1
     @property
     def id(self):
         return self._id

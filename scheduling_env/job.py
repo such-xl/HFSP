@@ -16,24 +16,16 @@ class Job(Node):
         for i,p in enumerate(self._process_list,start=1):
             print(f'工序{i}')
             print(p)
-    def is_complete(self) -> bool:
-        return self._progess == 0 
-
-    def matchMachine(self, machineID):
-        if self._machineID!=-1 or self.isAccomplished(): # 该job已经完成
-            return []
-        # return self.process_list.matchMachine(machineID)
-        k  = self.process_list.matchMachine(machineID)
-        if k == False:
-            print(f'job{self._id} --- status{self._status}')
-            input()
-        return k
-
-
-    def load(self,machineID):
-        self._machine_id = machineID
-        self._T_process = self.getTProcess(machineID)
-        self._T_processed = 0
+    
+    def get_t_process(self, machine_id):
+        return self._process_list[self._progess-1][machine_id]
+    
+    # 将job装载至machine
+    def load_to_machine(self,machine_id):
+        self._machine_id = machine_id
+        self._t_process = self.get_t_process(machine_id)
+        self._t_processed = 0
+    #加工一个时序
     def run_a_time_step(self):
         self._t_processed += 1
         if self._t_processed == self._t_process:        #当前工序加工完成

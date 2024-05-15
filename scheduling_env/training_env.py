@@ -3,6 +3,8 @@
     1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
     2: 判断所有job是否完成 over if done else repeat 1
 '''
+
+
 from .job_list import JobList
 from .machine_list import MachineList
 class TrainingEnv():
@@ -12,7 +14,6 @@ class TrainingEnv():
         self._agents_num = 0        #总agent数
         self._jobs_num  = 0         #总作业数
         self._completed_jobs = JobList()
-        self._uncompleted_jobs = JobList()
         self._pending_jobs = JobList()
         self._in_progress_jobs = JobList()
         self._busy_agents = MachineList(0)
@@ -20,28 +21,50 @@ class TrainingEnv():
         self._idle_agents = None
         
     def get_jobs_from_file(self, jobs_path:str):
-        self._uncompleted_jobs.decode_job_flie(jobs_path)
-        self._jobs_num = self._uncompleted_jobs.job_num
-        self._agent_num = self._uncompleted_jobs.machine_num
+        self._pending_jobs.decode_job_flie(jobs_path)
+        self._jobs_num = self._pending_jobs.job_num
+        self._agent_num = self._pending_jobs.machine_num
         self._idle_agent = MachineList(self._agent_num)
     
     # 所有忙碌agent和job更新一个time step
     def run_a_time_step(self):
         in_progress_job = self._in_progress_jobs._head
-        idle_agent = self._idle_agent._head
+        busy_agent = self._idle_agent._head
         # 显然，忙碌agent与处理中的job数量总是一致的，所有可以用一个循环处理
-        while in_progress_job and idle_agent:
+        while in_progress_job and busy_agent:
             in_progress_job.run_a_time_step()
-            idle_agent.run_a_time_step()
+            busy_agent.run_a_time_step()
 
-            if in_progress_job.status == 1
-                
-            if in_progress_job.is_completed():
+            if in_progress_job.status == 2:     #工序加工完成，转到待加工链表
+                next_job = in_progress_job.next
+                self._in_progress_jobs.disengage_node(in_progress_job)
+                self._pending_jobs.append(in_progress_job)
+                in_progress_job = next_job
+            elif in_progress_job.status == 0:   #所有工序加工完成，转到已完成链表
+                next_job = in_progress_job.next
+                self._in_progress_jobs.disengage_node(in_progress_job)
                 self._completed_jobs.append(in_progress_job)
-                self._in_progress_jobs.remove(in_progress_job)
-                idle_agent.append(in_progress_job)
-            in_progress_job = in_progress_job.next
-            idle_agent = idle_agent.next
+                in_progress_job = next_job
+            else:                               #当前时序，未加工完成
+                in_progress_job = in_progress_job.next
+
+            
+            if busy_agent.status == 2:          #工序加工结束，转到idle
+                next_agent = busy_agent.next
+                self._busy_agents.disengage_node(busy_agent)
+                self._idle_agent.append(busy_agent)
+                busy_agent = next_agent
+            elif busy_agent.status == 0:        #故障，相应处理，
+                next_agent = busy_agent.next
+                self._busy_agents.disengage_node(busy_agent)
+                '''
+                    故障后相应处理，暂时未做
+                '''
+                self._faulty_agents.append(busy_agent)
+                busy_agent = next_agent
+            else:                               #当前时序，未加工完成
+                busy_agent = busy_agent.next
+                                
     # 
     def step(self):
         pass
