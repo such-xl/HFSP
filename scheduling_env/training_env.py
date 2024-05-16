@@ -39,7 +39,7 @@ class TrainingEnv():
         obs = []
         done = False
         in_progress_job = self._in_progress_jobs._head
-        busy_agent = self._idle_agents._head
+        busy_agent = self._busy_agents._head
         # 显然，忙碌agent与处理中的job数量总是一致的，所有可以用一个循环处理
         while in_progress_job and busy_agent:
             in_progress_job.run_a_time_step()
@@ -57,9 +57,7 @@ class TrainingEnv():
                 in_progress_job = next_job
             else:                               #当前时序，未加工完成
                 in_progress_job = in_progress_job.next
-
-            
-            if busy_agent.status == 2:          #工序加工结束，转到idle
+            if busy_agent.status == 1:          #工序加工结束，转到idle
                 next_agent = busy_agent.next
                 self._busy_agents.disengage_node(busy_agent)
                 self._idle_agents.append(busy_agent)
@@ -85,8 +83,6 @@ class TrainingEnv():
         reward = []
         done = False
         info = []
-        print(action,end='  ')
-        print(len(act_jobs))
         if action == 0:         #机器选择空闲,对环境不产生影响
 
             pass
@@ -94,6 +90,8 @@ class TrainingEnv():
             # machine load job
             act_jobs[action].load_to_machine(idle_machine.id)
             idle_machine.load_job(act_jobs[action].id,act_jobs[action].get_t_process(idle_machine.id))
+            print(f'等待作业：{self._pending_jobs.length}')
+            print(f'加工作业：{self._in_progress_jobs.length}')
             # 节点转移
             self._idle_agents.disengage_node(idle_machine)
             self._busy_agents.append(idle_machine)
@@ -101,6 +99,9 @@ class TrainingEnv():
             self._pending_jobs.disengage_node(act_jobs[action])
             self.in_progress_jobs.append(act_jobs[action])
 
+            print(f'机器{idle_machine.id} 装载作业{act_jobs[action].id}')
+            print(f'等待作业：{self._pending_jobs.length}')
+            print(f'加工作业：{self._in_progress_jobs.length}')
         if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
             done = True
         return obs,reward,done,info
@@ -114,9 +115,6 @@ class TrainingEnv():
     @property
     def jobs_num(self):
         return self._jobs_num
-    @property
-    def agent_num(self):
-        return self._agent_num
     @property
     def completed_jobs(self):
         return self._completed_jobs
@@ -135,7 +133,7 @@ class TrainingEnv():
     @property
     def busy_agents(self):
         return self._busy_agents
-    
+
 '''
 env = TrainingEnv()
 

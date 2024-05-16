@@ -3,7 +3,7 @@ from scheduling_env.training_env import TrainingEnv
 
 # 创建并初始化环境，从文件中解析job和machine信息，对环境初始化
 env = TrainingEnv()
-job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Barnes/Text/mt10c1.fjs'
+job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Barnes/Text/setb4cc.fjs'
 
 
 
@@ -22,47 +22,21 @@ while flag:
     idle_agent = env.idle_agents.head
     while idle_agent:                       #遍历所有idle agent
         next_agent = idle_agent.next
+        # if env.pending_jobs.length== 6 and env.in_progress_jobs.length==0:
+        #     print(' ')
         act_jobs,act_jobs_id = env.get_agent_actions(idle_agent.id)   #获取agent的动作
+
         action = idle_agent.sample_action(obs,act_jobs,act_jobs_id)          #采样一个动作
         obs,reward,done,info = env.step(idle_agent,action,act_jobs)         #执行动作
         if done:            #所有作业完成
             flag = False
+            print(env.pending_jobs.length)
+            print(env.in_progress_jobs.length)
+            print(env.completed_jobs.length)
+            print(env.idle_agents.length)
+            print(env.busy_agents.length)
+            print('tiemstep: ',time_step)
+            break
         idle_agent = next_agent
-
     time_step += 1
-    if time_step == 100:
-        flag = False
-        print(env.pending_jobs.length)
-        print(env.in_progress_jobs.length)
-        print(env.completed_jobs.length)
 
-        print('----')
-        print(env.idle_agents.length)
-
-
-        print(env.busy_agents.length)
-        print(env.faulty_agents.length)
-        head = env.idle_agents.head
-        while head:
-            print(head.id,end=' ')
-            head = head.next
-        head = env.busy_agents.head
-        print('')
-        while head:
-            print(head.id,end=' ')
-            head = head.next
-        
-        print(env.agents_num)
-        input()
-
-
-
-'''
-uj = env.pending_jobs
-
-head = uj.head
-while head:
-    head.show()
-    head = head.next
-print(uj.lenth)
-'''

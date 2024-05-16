@@ -39,7 +39,7 @@ class Machine(Node):
             self._job_id = 0
             self._t_process = 0
             self._t_processed = 0
-            self._status = 1
+            self._status = 1                     #将该机器的状态设置为空闲
     @property
     def id(self):
         return self._id
@@ -74,8 +74,8 @@ class Machine(Node):
     def t_processed(self):
         return self._t_processed
     @t_processed.setter
-    def T_processed(self, t_processed):
-        self._T_processed = t_processed
+    def t_processed(self, t_processed):
+        self._t_processed = t_processed
     @property
     def job_id(self):
         return self._job_id
