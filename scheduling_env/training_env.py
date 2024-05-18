@@ -19,11 +19,16 @@ class TrainingEnv():
         self._busy_agents = MachineList(0)
         self._faulty_agents = MachineList(0)
         self._idle_agents:MachineList = None
+        self._draw_data = None        #画图信息
+        self._time_step = 0
         
     def get_jobs_from_file(self, jobs_path:str):
         self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._pending_jobs.length
         self._idle_agents = MachineList(self._agents_num)
+
+        self._draw_data = [[] for i in range(self._jobs_num)]
+
     def get_agent_actions(self,agent_id):
         act_jobs,act_jobs_id = [None],[0]               #第一个动作是idle    
         pending_job = self._pending_jobs.head
@@ -40,20 +45,21 @@ class TrainingEnv():
         done = False
         in_progress_job = self._in_progress_jobs._head
         busy_agent = self._busy_agents._head
-        # 显然，忙碌agent与处理中的job数量总是一致的，所有可以用一个循环处理
+        # 显然，忙碌agent与处理中的job数量总是一致的，且一一对应，所有可以用一个循环处理
         while in_progress_job and busy_agent:
             in_progress_job.run_a_time_step()
             busy_agent.run_a_time_step()
-
             if in_progress_job.status == 2:     #工序加工完成，转到待加工链表
                 next_job = in_progress_job.next
                 self._in_progress_jobs.disengage_node(in_progress_job)
                 self._pending_jobs.append(in_progress_job)
+                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
                 in_progress_job = next_job
             elif in_progress_job.status == 0:   #所有工序加工完成，转到已完成链表
                 next_job = in_progress_job.next
                 self._in_progress_jobs.disengage_node(in_progress_job)
                 self._completed_jobs.append(in_progress_job)
+                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
                 in_progress_job = next_job
             else:                               #当前时序，未加工完成
                 in_progress_job = in_progress_job.next
@@ -90,8 +96,6 @@ class TrainingEnv():
             # machine load job
             act_jobs[action].load_to_machine(idle_machine.id)
             idle_machine.load_job(act_jobs[action].id,act_jobs[action].get_t_process(idle_machine.id))
-            print(f'等待作业：{self._pending_jobs.length}')
-            print(f'加工作业：{self._in_progress_jobs.length}')
             # 节点转移
             self._idle_agents.disengage_node(idle_machine)
             self._busy_agents.append(idle_machine)
@@ -99,9 +103,9 @@ class TrainingEnv():
             self._pending_jobs.disengage_node(act_jobs[action])
             self.in_progress_jobs.append(act_jobs[action])
 
-            print(f'机器{idle_machine.id} 装载作业{act_jobs[action].id}')
-            print(f'等待作业：{self._pending_jobs.length}')
-            print(f'加工作业：{self._in_progress_jobs.length}')
+            # 统计数据绘图
+            self._draw_data[act_jobs[action].id-1].append([idle_machine.id,self._time_step,self._time_step])
+
         if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
             done = True
         return obs,reward,done,info
@@ -133,7 +137,15 @@ class TrainingEnv():
     @property
     def busy_agents(self):
         return self._busy_agents
-
+    @property
+    def draw_data(self):
+        return self._draw_data
+    @property
+    def time_step(self):
+        return self._time_step
+    @time_step.setter
+    def time_step(self, time_step):
+        self._time_step = time_step
 '''
 env = TrainingEnv()
 

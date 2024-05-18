@@ -1,20 +1,15 @@
 import os
 from scheduling_env.training_env import TrainingEnv
-
+from scheduling_env.utils import Plotter
 # 创建并初始化环境，从文件中解析job和machine信息，对环境初始化
 env = TrainingEnv()
+plotter = Plotter(0)
 job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Barnes/Text/setb4cc.fjs'
-
-
-
 env.get_jobs_from_file(job_file_path)
-
-
 flag = True                     #用来判断while循环结束
-time_step = 0                   #时序
-
+time_step = 0
 while flag:
-    print(f'time_step:{time_step}')
+    print(f'time_step:{env.time_step}')
     # busy_agen
     # t加工一个time_step
     obs,done = env.run_a_time_step()
@@ -35,8 +30,15 @@ while flag:
             print(env.completed_jobs.length)
             print(env.idle_agents.length)
             print(env.busy_agents.length)
-            print('tiemstep: ',time_step)
+            for j in env.draw_data:
+                for i in j:
+                    print(i,end=' ')
+                print()
+            print('tiemstep: ',env.time_step)
+            print('timestep:',time_step)
+            plotter.gant_chat(env.draw_data)
             break
         idle_agent = next_agent
+    env.time_step += 1
     time_step += 1
 

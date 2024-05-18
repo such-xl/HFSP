@@ -33,19 +33,16 @@ class Job(Node):
     #加工一个时序
     def run_a_time_step(self):
         self._t_processed += 1
-        print(f'机器{self._machine_id}加工作业{self._id} 1s',end=' ')
         if self._t_processed == self._t_process:        #当前工序加工完成
             self._t_processed = 0
             self._t_process = 0
             self._machine_id = 0
             self._progress +=1
-            print(f'工序完成',end=' ')
             if self._progress == self._process_num+1:    # 最后一道工序加工完成
                 self._progress = 0
                 self._status = 0
             else:
                 self._status = 2
-            print()
     
     @property
     def id(self):
