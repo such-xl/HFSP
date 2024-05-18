@@ -4,7 +4,7 @@ from scheduling_env.utils import Plotter
 # 创建并初始化环境，从文件中解析job和machine信息，对环境初始化
 env = TrainingEnv()
 plotter = Plotter(0)
-job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Barnes/Text/setb4cc.fjs'
+job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Barnes/Text/mt10c1.fjs'
 env.get_jobs_from_file(job_file_path)
 flag = True                     #用来判断while循环结束
 time_step = 0

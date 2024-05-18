@@ -95,7 +95,7 @@ class Plotter:
             plt.ion()   #开启交互模式
         self.colorset =[
             '#FF69B4', '#FFD700', '#FF4500', '#00FF7F' , '#7FFF00', '#FF1493', '#00BFFF', '#FF8C00',
-            '#FFB6C1', '#008080', '#800080', '#9932CC',  '#FF6347', '#BA55D3', '#3CB371', '#a1d99b'
+            '#FFB6C1', '#008080', '#800080', '#9932CC',  '#FF6347', '#BA55D3', '#3CB371', '#a1d99b',
             '#FF00FF', '#a63603', '#228B22', '#6A5ACD',  '#F0E68C', '#4682B4', '#E6E6FA', '#d62728'
             ]
         '''
@@ -126,7 +126,7 @@ class Plotter:
         machine_num = 0
         for i,info in enumerate(data,start=1):
             for j in info:
-                self.ax.barh(f'job{i}',j[2]-j[1],left=j[1],color=self.colorset[j[0]])
+                self.ax.barh(f'job{i}',j[2]-j[1],left=j[1],color=self.colorset[j[0]-1])
                 machine_num = max(machine_num, j[0])
         patch = []
         for i in range(machine_num):

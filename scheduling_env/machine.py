@@ -16,7 +16,9 @@ class Machine(Node):
 
     #从动作空间中采样一个动作
     def sample_action(self,obs,act_jos,act_jos_id):
-        return random.randint(0,len(act_jos)-1)
+        if len(act_jos) == 1:
+            return 0
+        return random.randint(1,len(act_jos)-1)
     def show(self):
         print(f'机器{self.ID},状态{self._status}',end=' ')
         if self._status == 2:
