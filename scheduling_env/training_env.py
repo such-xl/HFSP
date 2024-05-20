@@ -27,6 +27,11 @@ class TrainingEnv():
         self._jobs_num = self._pending_jobs.length
         self._idle_agents = MachineList(self._agents_num)
 
+        # head = self.pending_jobs.head
+        # while head:
+        #     head.show()
+        #     head = head.next
+
         self._draw_data = [[] for i in range(self._jobs_num)]
 
     def get_agent_actions(self,agent_id):

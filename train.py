@@ -4,12 +4,12 @@ from scheduling_env.utils import Plotter
 # 创建并初始化环境，从文件中解析job和machine信息，对环境初始化
 env = TrainingEnv()
 plotter = Plotter(0)
-job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Barnes/Text/mt10c1.fjs'
+job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Brandimarte_Data/Text/Mk10.fjs'
 env.get_jobs_from_file(job_file_path)
 flag = True                     #用来判断while循环结束
 time_step = 0
 while flag:
-    print(f'time_step:{env.time_step}')
+    #print(f'time_step:{env.time_step}')
     # busy_agen
     # t加工一个time_step
     obs,done = env.run_a_time_step()
