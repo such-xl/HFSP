@@ -3,8 +3,6 @@
     1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
     2: 判断所有job是否完成 over if done else repeat 1
 '''
-
-
 from .job_list import JobList
 from .machine_list import MachineList
 class TrainingEnv():
@@ -27,6 +25,12 @@ class TrainingEnv():
         self._jobs_num = self._pending_jobs.length
         self._idle_agents = MachineList(self._agents_num)
 
+        c_n = self._pending_jobs._head
+        print('start')
+        while c_n:
+            c_n.show()
+            c_n = c_n.next
+        print('end')
         # head = self.pending_jobs.head
         # while head:
         #     head.show()
@@ -54,6 +58,7 @@ class TrainingEnv():
         while in_progress_job and busy_agent:
             in_progress_job.run_a_time_step()
             busy_agent.run_a_time_step()
+            state=in_progress_job.get_job_state()
             if in_progress_job.status == 2:     #工序加工完成，转到待加工链表
                 next_job = in_progress_job.next
                 self._in_progress_jobs.disengage_node(in_progress_job)
@@ -95,12 +100,11 @@ class TrainingEnv():
         done = False
         info = []
         if action == 0:         #机器选择空闲,对环境不产生影响
-
             pass
         else:
             # machine load job
             act_jobs[action].load_to_machine(idle_machine.id)
-            idle_machine.load_job(act_jobs[action].id,act_jobs[action].get_t_process(idle_machine.id))
+            idle_machine.load_job(act_jobs[action].id,act_jobs[action].get_t_process(idle_machine.id),act_jobs[action].progress)
             # 节点转移
             self._idle_agents.disengage_node(idle_machine)
             self._busy_agents.append(idle_machine)

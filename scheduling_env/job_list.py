@@ -33,7 +33,7 @@ class JobList(DoublyLinkList):
                     i  += (1+line[i]*2)
  
                 #self.prepend(Job(job_id,r-1,procs))
-                self.append(Job(job_id,r-1,procs))
+                self.append(Job(job_id,r-1,procs,line))
         return machine_num
                 
 
