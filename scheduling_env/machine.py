@@ -20,6 +20,8 @@ class Machine(Node):
         if len(act_jos) == 1:
             return 0
         return random.randint(1,len(act_jos)-1)
+    def get_machine_state(self):
+        return  self._encode
     def show(self):
         # print(f'机器{self._id},状态{self._status}',end=' ')
         print(self._encode)

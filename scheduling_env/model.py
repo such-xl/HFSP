@@ -2,42 +2,97 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class JobMachineAttentionModel(nn.Module):
+class Critic(nn.Module):
     def __init__(self, job_input_dim, job_hidden_dim, machine_input_dim, machine_hidden_dim, num_heads):
-        super(JobMachineAttentionModel, self).__init__()
+        super(Critic, self).__init__()
+        self.relu = nn.ReLU()
+        self.on_job_attn = nn.MultiheadAttention(job_input_dim,num_heads)
+        self.job_attn = nn.MultiheadAttention(job_input_dim, num_heads)
+        
+        self.machine_fc = nn.Linear(machine_input_dim,job_input_dim)
+
+        self.machine_attn = nn.MultiheadAttention(machine_input_dim,num_heads)
+        self.j_m_attn = nn.MultiheadAttention()
+        self.machine_multihead_attention = nn.MultiheadAttention(machine_input_dim,num_heads)
         self.job_fc = nn.Linear(job_input_dim, job_hidden_dim)
         self.machine_fc = nn.Linear(machine_input_dim, machine_hidden_dim)
-        self.relu = nn.ReLU()
-        self.multihead_attention = nn.MultiheadAttention(job_hidden_dim, num_heads)
+        self.multihead_attention=nn.MultiheadAttention(job_hidden_dim,num_heads)
+    def forward(self, wait_job,on_job,wait_machine, on_job_mask=None, machine_mask=None):
 
-    def forward(self, job_data, machine_data, job_mask=None, machine_mask=None):
-        # Transform job information
-        job_data = self.job_fc(job_data)  # [batch_size, job_seq_length, job_hidden_dim]
-        job_data = self.relu(job_data)  # Apply ReLU
-        job_data = job_data.transpose(0, 1)  # [job_seq_length, batch_size, job_hidden_dim]
+        # 正在执行的job data 通过一个self-attention layer
+        on_job = on_job.transpose(0,1)  # [job_seq_length, batch_size, job_hidden_dim]
+        on_job,_ = self.on_job_attn(on_job,on_job,on_job,on_job_mask)
+        on_job = self.relu(on_job[-1,:,:]) #取最后一个输出作为on_job embeding
+        wait_job = wait_job.transpose(0,1)
+        wait_job = torch.cat((wait_job,on_job),dim=0) #将on_job embeding 合并到wait_job
+
+        wait_job_emded,_ = self.job_attn(wait_job_emded,wait_job_emded,wait_job_emded)
 
         # Transform machine information
-        machine_data = self.machine_fc(machine_data)  # [batch_size, machine_seq_length, machine_hidden_dim]
-        machine_data = self.relu(machine_data)  # Apply ReLU
-        machine_data = machine_data.transpose(0, 1)  # [machine_seq_length, batch_size, machine_hidden_dim]
+        wait_machine_embed = self.relu(self.machine_fc(wait_machine)) #使得machine的embed_dim和job的一致
+        wait_machine_embed = wait_machine_embed.transpose(0,1)
+        wait_machine_embed,_ = self.machine_attn(wait_machine_embed,wait_machine_embed,wait_machine_embed,machine_mask)
+        result,_ = self.j_m_attn(wait_machine_embed,wait_job_emded,wait_job_emded)
+        
+        return result.transpose(0, 1), _  # Return to original dims for further processing
+class Actor(nn.Module):
+    def __init__(self, job_input_dim, job_hidden_dim, machine_input_dim, machine_hidden_dim, num_heads):
+        super().__init__()
+        self.relu = nn.ReLU()
+        self.on_job_attn = nn.MultiheadAttention(job_input_dim,num_heads)
+        self.job_attn = nn.MultiheadAttention(job_input_dim, num_heads)
+        
+        self.machine_fc = nn.Linear(machine_input_dim,job_input_dim)
 
-        # Multi-head attention where machine data queries job data
-        attn_output, attn_output_weights = self.multihead_attention(machine_data, job_data, job_data, key_padding_mask=job_mask)
-        return attn_output.transpose(0, 1), attn_output_weights  # Return to original dims for further processing
+        self.machine_attn = nn.MultiheadAttention(machine_hidden_dim,num_heads)
+        self.j_m_attn = nn.MultiheadAttention(job_hidden_dim,num_heads)
+        self.machine_multihead_attention = nn.MultiheadAttention(machine_input_dim,num_heads)
+        self.job_fc = nn.Linear(job_input_dim, job_hidden_dim)
+        self.machine_fc = nn.Linear(machine_input_dim, machine_hidden_dim)
+        self.multihead_attention=nn.MultiheadAttention(job_hidden_dim,num_heads)
+        self.q_fc = nn.Linear(job_hidden_dim,30)
+    def forward(self, wait_job,on_job,wait_machine, on_job_mask=None, machine_mask=None):
 
+        # 正在执行的job data 通过一个self-attention layer
+        on_job = on_job.transpose(0,1)  # [job_seq_length, batch_size, job_hidden_dim]
+        on_job,_ = self.on_job_attn(on_job,on_job,on_job,on_job_mask)
+        on_job = self.relu(on_job[-1:,:,:]) #取最后一个输出作为on_job embeding
+        wait_job = wait_job.transpose(0,1)
+
+        wait_job_emded = torch.cat((wait_job,on_job),dim=0) #将on_job embeding 合并到wait_job
+        wait_job_emded,_ = self.job_attn(wait_job_emded,wait_job_emded,wait_job_emded)
+
+        # Transform machine information
+        wait_machine_embed = self.relu(self.machine_fc(wait_machine)) #使得machine的embed_dim和job的一致
+        wait_machine_embed = wait_machine_embed.transpose(0,1)
+        wait_machine_embed,_ = self.machine_attn(wait_machine_embed,wait_machine_embed,wait_machine_embed,machine_mask)
+        result,_ = self.j_m_attn(wait_machine_embed,wait_job_emded,wait_job_emded)
+        result = self.q_fc(result.transpose(0,1))
+        return result
+class Actora(nn.Module):
+    def __init__(self,job_input_dim,machine_input_dim,job_hidden_dim,machine_hidden_dim,num_heads) -> None:
+        super().__init__()
+        self.on_job_attn = nn.MultiheadAttention(job_input_dim,num_heads)
+        self.job_attn = nn.MultiheadAttention(job_input_dim,num_heads)
+        self.machine_fc = nn.Linear(machine_input_dim,machine_hidden_dim)
+    def forward(self,wait_job,on_job,wait_machine,on_job_mask=None,wait_job_mask=None):
+        # on_job 正在执行的job 通过self-attention 
+        pass
+    '''
 # Example usage
-job_input_dim = 300
-job_hidden_dim = 256
+job_input_dim = 100
+job_hidden_dim = 128
 machine_input_dim = 5
-machine_hidden_dim = 256
-num_heads = 8
+machine_hidden_dim = 128
+num_heads = 1
+model = Critic()
 
-model = JobMachineAttentionModel(job_input_dim, job_hidden_dim, machine_input_dim, machine_hidden_dim, num_heads)
-
-job = torch.randn(1, 50, 300)
+job = torch.randn(1, 30, 100)
 machine = torch.randn(1,30,5)
-output,_ = model(job,machine)
-print(output)
-print(output.shape)
-print(_.shape)
-print(_)
+job_1 = torch.randn(1,30,100)
+machine_1 = torch.randn(1,20,5)
+output0,w0= model(job,machine)
+output1,w1 = model(job_1,machine_1)
+print(w0)
+print(w1.shape)
+'''

@@ -57,6 +57,8 @@ class Job(Node):
             for key, value in p.items():
                 job_state.extend([key,value])
             job_state.append(0)
+        if len(job_state)<128:
+            job_state.extend([0]*(128-len(job_state)))
         return job_state
     @property
     def id(self):

@@ -24,22 +24,9 @@ class TrainingEnv():
         self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._pending_jobs.length
         self._idle_agents = MachineList(self._agents_num)
-
-        c_n = self._pending_jobs._head
-        print('start')
-        while c_n:
-            c_n.show()
-            c_n = c_n.next
-        print('end')
-        # head = self.pending_jobs.head
-        # while head:
-        #     head.show()
-        #     head = head.next
-
         self._draw_data = [[] for i in range(self._jobs_num)]
-
     def get_agent_actions(self,agent_id):
-        act_jobs,act_jobs_id = [None],[0]               #第一个动作是idle    
+        act_jobs,act_jobs_id = [],[]                   
         pending_job = self._pending_jobs.head
         while pending_job:
             if pending_job.match_machine(agent_id):             #该job可被当前agent加工
@@ -50,15 +37,14 @@ class TrainingEnv():
          
     # 所有忙碌agent和job更新一个time step
     def run_a_time_step(self):
-        obs = []
+        s_o_j = []
         done = False
-        in_progress_job = self._in_progress_jobs._head
-        busy_agent = self._busy_agents._head
-        # 显然，忙碌agent与处理中的job数量总是一致的，且一一对应，所有可以用一个循环处理
+        in_progress_job = self._in_progress_jobs.head
+        busy_agent = self._busy_agents.head
+        # 显然，忙碌agent与处理中的job数量总是一致的，且一一对应，所以可以用一个循环处理
         while in_progress_job and busy_agent:
             in_progress_job.run_a_time_step()
             busy_agent.run_a_time_step()
-            state=in_progress_job.get_job_state()
             if in_progress_job.status == 2:     #工序加工完成，转到待加工链表
                 next_job = in_progress_job.next
                 self._in_progress_jobs.disengage_node(in_progress_job)
@@ -71,7 +57,8 @@ class TrainingEnv():
                 self._completed_jobs.append(in_progress_job)
                 self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
                 in_progress_job = next_job
-            else:                               #当前时序，未加工完成
+            else:                               #当前工序，未加工完成
+                s_o_j.append(in_progress_job.get_job_state())
                 in_progress_job = in_progress_job.next
             if busy_agent.status == 1:          #工序加工结束，转到idle
                 next_agent = busy_agent.next
@@ -90,16 +77,34 @@ class TrainingEnv():
                 busy_agent = busy_agent.next
         if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
             done = True
-        return obs,done
-                                
+        idle_agent = self._idle_agents.head
+        s_p_m = []
+        s_p_j = []
+        act_jobs = None
+        if idle_agent:
+            s_p_m = [self._idle_agents.head.get_machine_state()]
+            act_jobs,_ = self.get_agent_actions(idle_agent.id)
+            for aj in act_jobs:
+                s_p_j.append(aj.get_job_state())
+        return s_p_m,s_p_j,s_o_j,idle_agent,act_jobs,done
+    def reset(self,jobs_path:str):
+        self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
+        #返回 初始化状态，(第一个idle machine(s_p_m),其可选job(s_p_j)                          
+        idle_agent = self._idle_agents.head
+        s_p_m = [idle_agent.get_machine_state()]
+        act_jobs, _ = self.get_agent_actions(idle_agent.id)
+        s_p_j = []
+        for aj in act_jobs:
+            s_p_j.append(aj.get_job_state())
+        return s_p_m,s_p_j,idle_agent,act_jobs
+
         
     # 
     def step(self,idle_machine,action,act_jobs):
-        obs = []
-        reward = []
+        reward = -1
         done = False
         info = []
-        if action == 0:         #机器选择空闲,对环境不产生影响
+        if action == -1:         #机器选择空闲,对环境不产生影响
             pass
         else:
             # machine load job
@@ -117,7 +122,22 @@ class TrainingEnv():
 
         if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
             done = True
-        return obs,reward,done,info
+        next_idle_agent = idle_machine.next
+        n_s_p_j = []
+        n_s_p_m = []
+        next_act_jobs = None
+        if next_idle_agent:
+            n_s_p_m  = [next_idle_agent.get_machine_state()]
+            next_act_jobs,_ = self.get_agent_actions(next_idle_agent.id)
+            for aj in act_jobs:
+                n_s_p_j.append(aj.get_job_state())
+        
+        n_s_o_j = []
+        on_job = self._in_progress_jobs.head
+        while on_job:
+            n_s_o_j.append(on_job.get_job_state())
+            on_job = on_job.next
+        return n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,reward,done
 
     @property
     def action_space(self):
