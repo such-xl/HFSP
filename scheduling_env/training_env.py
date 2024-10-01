@@ -24,7 +24,7 @@ class TrainingEnv():
         self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._pending_jobs.length
         self._idle_agents = MachineList(self._agents_num)
-        self._draw_data = [[] for i in range(self._jobs_num)]
+        #self._draw_data = [[] for i in range(self._jobs_num)]
     def get_agent_actions(self,agent_id):
         act_jobs,act_jobs_id = [],[]                   
         pending_job = self._pending_jobs.head
@@ -49,13 +49,13 @@ class TrainingEnv():
                 next_job = in_progress_job.next
                 self._in_progress_jobs.disengage_node(in_progress_job)
                 self._pending_jobs.append(in_progress_job)
-                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
+                #self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
                 in_progress_job = next_job
             elif in_progress_job.status == 0:   #所有工序加工完成，转到已完成链表
                 next_job = in_progress_job.next
                 self._in_progress_jobs.disengage_node(in_progress_job)
                 self._completed_jobs.append(in_progress_job)
-                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
+                #self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
                 in_progress_job = next_job
             else:                               #当前工序，未加工完成
                 s_o_j.append(in_progress_job.get_job_state())
@@ -86,6 +86,8 @@ class TrainingEnv():
             act_jobs,_ = self.get_agent_actions(idle_agent.id)
             for aj in act_jobs:
                 s_p_j.append(aj.get_job_state())
+        else:
+            s_p_m = [[0,0,0,0,0]]
         return s_p_m,s_p_j,s_o_j,idle_agent,act_jobs,done
     def reset(self,jobs_path:str):
         self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
@@ -96,6 +98,7 @@ class TrainingEnv():
         s_p_j = []
         for aj in act_jobs:
             s_p_j.append(aj.get_job_state())
+        self._time_step = 0
         return s_p_m,s_p_j,idle_agent,act_jobs
 
         
@@ -103,8 +106,7 @@ class TrainingEnv():
     def step(self,idle_machine,action,act_jobs):
         reward = -1
         done = False
-        info = []
-        if action == -1:         #机器选择空闲,对环境不产生影响
+        if action == 29 :         #机器选择空闲,对环境不产生影响
             pass
         else:
             # machine load job
@@ -118,9 +120,9 @@ class TrainingEnv():
             self.in_progress_jobs.append(act_jobs[action])
 
             # 统计数据绘图
-            self._draw_data[act_jobs[action].id-1].append([idle_machine.id,self._time_step,self._time_step])
+            #self._draw_data[act_jobs[action].id-1].append([idle_machine.id,self._time_step,self._time_step])
 
-        if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
+        if self._pending_jobs.length== 0:    # 所有job完成,没有job需要安排机器了，便于计算reward,环境没有done
             done = True
         next_idle_agent = idle_machine.next
         n_s_p_j = []
@@ -131,7 +133,8 @@ class TrainingEnv():
             next_act_jobs,_ = self.get_agent_actions(next_idle_agent.id)
             for aj in act_jobs:
                 n_s_p_j.append(aj.get_job_state())
-        
+        else:
+            n_s_p_m  = [[0,0,0,0,0]]
         n_s_o_j = []
         on_job = self._in_progress_jobs.head
         while on_job:

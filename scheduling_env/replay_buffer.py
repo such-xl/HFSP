@@ -2,30 +2,40 @@ import random
 from collections import deque
 import numpy as np
 
-class ReplayBuffer:
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)  # 使用双端队列存储经验，自动丢弃最旧的数据
+from .utils import StateNorm
 
-    def add(self, s_o_j,s_p_j,s_p_m, action, reward, n_s_o_j,n_s_p_j,n_s_p_m, done):
-        self.buffer.append((s_o_j,s_p_j,s_p_m, action, reward, n_s_o_j,n_s_p_j,n_s_p_m, done))
+class ReplayBuffer:
+    def __init__(self, capacity,job_dim,job_seq_len,machine_dim,machine_seq_len):
+        self.buffer = deque(maxlen=capacity)  # 使用双端队列存储经验，自动丢弃最旧的数据
+        self.state_norm = StateNorm(job_dim,job_seq_len,machine_dim,machine_seq_len)
+
+    def add(self,s_p_m,s_p_j,s_o_j, action, reward, n_s_p_m,n_s_p_j,n_s_o_j, done):
+        self.buffer.append((s_p_m,s_p_j,s_o_j, action, reward, n_s_p_m,n_s_p_j,n_s_o_j, done))
 
     def sample(self, batch_size):
         sample_size = min(len(self.buffer), batch_size)  # 确保不会超过buffer的大小
         samples = random.sample(self.buffer, sample_size)  # 随机抽样
 
         # 解包样本元组为各自的组件，并转换成numpy数组以便进行批量处理
-        s_o_js,s_p_js,s_p_ms, actions, rewards, n_s_o_js,n_s_p_js,n_s_p_ms, dones = zip(*samples)
-
+        s_p_ms,s_p_js,s_o_js, actions, rewards,n_s_p_ms,n_s_p_js,n_s_o_js, dones = zip(*samples)
+        s_p_js,mask_spj = self.state_norm.job_seq_norm(s_p_js,0)
+        s_o_js,mask_soj = self.state_norm.job_seq_norm(s_o_js,1)
+        n_s_p_js,mask_nspj = self.state_norm.job_seq_norm(n_s_p_js,0)
+        n_s_o_js,mask_nsoj = self.state_norm.job_seq_norm(n_s_o_js,1)
         return (
-            np.array(s_o_js),
-            np.array(s_p_js),
             np.array(s_p_ms),
-            np.array(actions), 
+            s_p_js,
+            s_o_js,
+            actions, 
             np.array(rewards), 
-            np.array(n_s_o_js), 
-            np.array(n_s_p_js),
             np.array(n_s_p_ms),
-            np.array(dones)
+            n_s_p_js,
+            n_s_o_js, 
+            np.array(dones),
+            mask_spj,
+            mask_soj,
+            mask_nspj,
+            mask_nsoj
         )
 
     def size(self):

@@ -1,25 +1,37 @@
 import os
+import torch
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.utils import Plotter
-from scheduling_env.model import Actor
-from scheduling_env.reply_buffer import ReplayBuffer
+from scheduling_env.replay_buffer import ReplayBuffer
 from scheduling_env.agents import Agent
 
 #from scheduling_env.model import JobMachineAttentionModel
 # 创建并初始化环境，从文件中解析job和machine信息，对环境初始化
-ccc = 0
 env = TrainingEnv()
 plotter = Plotter(0)
+#self,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon,learning_rate,gamma,target_update, device
+lr = 2e-10
+num_episodes = 500
+job_input_dim  = 128
+machine_input_dim = 5
+job_hidden_dim = machine_hidden_dim = 128
+action_dim = 30
+num_heads = 1
+job_seq_len = 30
+machine_seq_len = 30
+gamma = 0.98
+epsilon = 0.01
+target_update = 10
+buffer_size = 5000
+minimal_size = 500
+batch_size = 64
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Dauzere_Data/Text/18a.fjs'
-#env.get_jobs_from_file(job_file_path)
-actor = Actor(128,128,5,128,1)
-replay_buffer  = ReplayBuffer(10000)
-agent = Agent(0.01)
-flag = True                     #用来判断while循环结束
-time_step = 0
+replay_buffer  = ReplayBuffer(buffer_size,job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
+agent = Agent(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon,lr,gamma,target_update,device)
 
 
-for i in range(1): #episodes
+for i in range(10): #episodes
     #Generate an FJSS instance from teh emulating environment
     s_p_m,s_p_j,idle_agent,act_jobs = env.reset(jobs_path=job_file_path)
     done = False
@@ -30,6 +42,8 @@ for i in range(1): #episodes
         while idle_agent:
             # smmple a action
             action = agent.take_action(s_p_m,s_p_j,s_o_j,act_jobs)
+            if action == -1:
+                action = 29
             # execute action
             n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,reward,done = env.step(idle_agent,action,act_jobs)
             # store the info to replay buffer
@@ -38,11 +52,27 @@ for i in range(1): #episodes
             act_jobs = next_act_jobs
             s_p_m,s_p_j,s_o_j = n_s_p_m,n_s_p_j,n_s_o_j    
             # train agent
-            # if replay_buffer.size()>=100:
-            #     pass
+            if replay_buffer.size()>=minimal_size:
+                bspm,bspj,bsoj,baction,breward,bnspm,bnspj,bnsoj,bdone,bmask_spj,bmask_soj,bmask_nspj,bmask_nsoj = replay_buffer.sample(batch_size=batch_size)
+                transition_dict = {
+                    'spms':bspm,
+                    'spjs':bspj,
+                    'sojs':bsoj,
+                    'actions':baction,
+                    'rewards':breward,
+                    'nspms':bnspm,
+                    'nspjs':bnspj,
+                    'nsojs':bnsoj,
+                    'dones':bdone,
+                    'mask_spj':bmask_spj,
+                    'mask_soj':bmask_soj,
+                    'mask_nspj':bmask_nspj,
+                    'mask_nsoj':bmask_nsoj
+                }
+                agent.update(transition_dict=transition_dict)
         env.time_step+=1
-        print('time', env.time_step)
-    plotter.gant_chat(env.draw_data)
+    print('time', env.time_step)
+    #plotter.gant_chat(env.draw_data)
 
 '''            
 

@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import numpy as np
 
 
 class Node:
@@ -143,5 +144,34 @@ class Plotter:
             plt.ioff()
         plt.close()
 
-    
+class StateNorm:
+    def __init__(self,job_dim,job_seq_len,machine_dim,machine_seq_len) -> None:
+        self.job_dim = job_dim
+        self.job_seq_len = job_seq_len
+        self.machine_dim = machine_dim
+        self.machine_seq_len = machine_seq_len
+    def job_seq_norm(self,job_state,ty):
+        # job_state:[batch,seq_len,encoding_dim]
+        lens = self.job_seq_len
+        if ty == 0: #machine的候选作业state
+            lens -= 1
+        dim = self.job_dim
+        mask = np.ones((len(job_state),lens))
 
+        padded_data = np.zeros((len(job_state),lens,dim))
+        for i,seq in enumerate(job_state):
+            seq_len = len(seq)
+            if seq_len > 0:
+                padded_data[i,:seq_len,:] = seq
+                mask[i,:seq_len] = 0
+        if ty == 0:
+            zeros_column = np.zeros((len(job_state), 1))
+            # 使用 np.hstack 来水平堆叠原数组和这个全1的列向量
+            mask = np.hstack([mask, zeros_column])
+        # 当on_job为空时候，mask也是全True,然后通过attention layer后出现nan,所以要将mask全改为False
+        all_true_mask = np.all(mask, axis=1)
+        mask[all_true_mask, :] = False
+        return padded_data,mask
+
+
+        
