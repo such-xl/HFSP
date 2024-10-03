@@ -19,9 +19,10 @@ class Agent():
         self.device = device
         self.state_norm = StateNorm(job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
         self.count = 0
+        self.loss = 0
     def take_action(self,s_p_m,s_p_j,s_o_j,act_jobs):
         if np.random.random() < self.epsilon:
-            action  = np.random.randint(-1,len(act_jobs))
+            action  = np.random.randint(0,len(act_jobs)+1) #最后一个动作代表空闲
         else:
             s_p_m = torch.tensor([s_p_m],dtype=torch.float).to(self.device)
             s_p_j,mask_spj = self.state_norm.job_seq_norm([s_p_j],0)
@@ -54,23 +55,18 @@ class Agent():
         mask_nspj = torch.tensor(transition_dict['mask_nspj'],dtype=torch.bool).to(self.device)
         mask_nsoj = torch.tensor(transition_dict['mask_nsoj'],dtype=torch.bool).to(self.device)
         q_values = self.actor(spms,spjs,sojs,mask_spj,mask_soj).gather(2,actions).squeeze(-1) #[64,1]
-        # print(actions.shape)
-        # print(rewards.shape)
-        # print(dones.shape)
-        # print(mask_spj.shape)
-        # print(mask_soj.shape)
-        # print(mask_nspj.shape)
-        # print(mask_nsoj.shape)
-        next_q_values = self.target_actor(nspms,nspjs,nsojs,mask_nspj,mask_nsoj).squeeze(1)# [64,1,30] ->[64,30]
-        # if torch.isnan(next_q_values).any():
-        #     print("NaN detected in next_q_values")
-        min_value = torch.finfo(next_q_values.dtype).min
-        min_value = torch.tensor(min_value).to(self.device)
-        mask_next_q_values = torch.where(mask_nspj,min_value.expand_as(next_q_values),next_q_values).to(self.device)
-        max_nqv,_ = torch.max(mask_next_q_values,dim=1)
-        max_nqv = max_nqv.view(-1,1)
-        q_targets = rewards + self.gamma*max_nqv*(1-dones)
+        with torch.no_grad():
+            next_q_values = self.target_actor(nspms,nspjs,nsojs,mask_nspj,mask_nsoj).squeeze(1)# [64,1,30] ->[64,30]
+            # if torch.isnan(next_q_values).any():
+            # print("NaN detected in next_q_values")
+            min_value = torch.finfo(next_q_values.dtype).min
+            min_value = torch.tensor(min_value).to(self.device)
+            mask_next_q_values = torch.where(mask_nspj,min_value.expand_as(next_q_values),next_q_values).to(self.device)
+            max_nqv,_ = torch.max(mask_next_q_values,dim=1)
+            max_nqv = max_nqv.view(-1,1)
+            q_targets = rewards + self.gamma*max_nqv*(1-dones)
         dqn_loss = torch.mean(F.mse_loss(q_values,q_targets))
+        self.loss += dqn_loss
         #print(dqn_loss.item())
         self.optimizer.zero_grad()
         dqn_loss.backward()
@@ -78,4 +74,7 @@ class Agent():
 
         if self.count % self.target_update == 0:
             self.target_actor.load_state_dict(self.actor.state_dict())
+        if self.count % 1000 == 0:
+            print('loss:',self.loss.item()/1000)
+            self.loss = 0
         self.count += 1

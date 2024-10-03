@@ -90,7 +90,6 @@ class DoublyLinkList:
 
 class Plotter:
     def __init__(self, is_live: bool) -> None:
-        self.fig,self.ax = plt.subplots()
         self.is_live = is_live
         if self.is_live:
             plt.ion()   #开启交互模式
@@ -124,6 +123,8 @@ class Plotter:
     ]
     '''
     def gant_chat(self,data):
+        print(data)
+        self.fig, self.ax = plt.subplots()
         machine_num = 0
         for i,info in enumerate(data,start=1):
             for j in info:
