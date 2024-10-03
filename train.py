@@ -11,8 +11,8 @@ from scheduling_env.agents import Agent
 env = TrainingEnv()
 plotter = Plotter(False)
 #self,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon,learning_rate,gamma,target_update, device
-lr = 2e-6
-num_episodes = 100
+lr = 2e-4
+num_episodes = 1000
 job_input_dim  = 128
 machine_input_dim = 5
 job_hidden_dim = machine_hidden_dim = 128
@@ -25,7 +25,7 @@ epsilon = 0.005
 target_update = 100
 buffer_size = 5000
 minimal_size = 500
-batch_size = 64
+batch_size = 256
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Dauzere_Data/Text/18a.fjs'
 replay_buffer  = ReplayBuffer(buffer_size,job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
@@ -84,6 +84,7 @@ class Plotting:
         plt.show()
 plot  = Plotting()
 plot.plot_data(span_time)
+plt.savefig('a.png')
 '''            
 
 
