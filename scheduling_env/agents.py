@@ -33,18 +33,23 @@ class Agent():
             mask_spj = torch.tensor(mask_spj,dtype=torch.bool).to(self.device)
             mask_soj = torch.tensor(mask_soj,dtype=torch.bool).to(self.device)
             q_value = self.actor(s_p_m,s_p_j,s_o_j,mask_spj,mask_soj).view(-1)
+            # way 1:无效值屏蔽
+            '''
             action_value = torch.cat((q_value[:len(act_jobs)], q_value[-1].unsqueeze(0)))
             max_value, max_index = torch.max(action_value, dim=0)
             if max_index == len(act_jobs):
                 action = self.action_dim-1
             else:
                 action = max_index
+            '''
+            # way 2动作取余映射到合理范围
+            _,action = torch.max(q_value,dim=0)
         return action
     def update(self,transition_dict):
         spms = torch.tensor(transition_dict['spms'],dtype=torch.float).to(self.device)
         spjs = torch.tensor(transition_dict['spjs'],dtype=torch.float).to(self.device)
         sojs = torch.tensor(transition_dict['sojs'],dtype=torch.float).to(self.device)
-        actions = torch.tensor(transition_dict['actions']).view(-1,1).unsqueeze(-1).to(self.device)
+        actions = torch.tensor(transition_dict['actions']).view(-1,1).to(self.device) #[batsize,1]
         rewards = torch.tensor(transition_dict['rewards'],dtype=torch.float).view(-1,1).to(self.device)
         nspms = torch.tensor(transition_dict['nspms'],dtype=torch.float).to(self.device)
         nspjs = torch.tensor(transition_dict['nspjs'],dtype=torch.float).to(self.device)
@@ -54,27 +59,57 @@ class Agent():
         mask_soj = torch.tensor(transition_dict['mask_soj'],dtype=torch.bool).to(self.device)
         mask_nspj = torch.tensor(transition_dict['mask_nspj'],dtype=torch.bool).to(self.device)
         mask_nsoj = torch.tensor(transition_dict['mask_nsoj'],dtype=torch.bool).to(self.device)
-        q_values = self.actor(spms,spjs,sojs,mask_spj,mask_soj).gather(2,actions).squeeze(-1) #[64,1]
+        q_values = self.actor(spms,spjs,sojs,mask_spj,mask_soj).squeeze(1)# [batch_size,1,action_dim]->[batch_size,action_dim]
+        q_values = q_values.gather(1,actions) # [batch_size,1]
+        
+        '''
+        print('actions:',actions.shape)
+        print(actions)
+        print('q_values_raw:',q_values.shape)
+        print(q_values)
+        print('q_values:',q_values.shape)
+        print(q_values)
+        '''
         with torch.no_grad():
-            next_q_values = self.target_actor(nspms,nspjs,nsojs,mask_nspj,mask_nsoj).squeeze(1)# [64,1,30] ->[64,30]
-            # if torch.isnan(next_q_values).any():
-            # print("NaN detected in next_q_values")
+            next_q_values = self.target_actor(nspms,nspjs,nsojs,mask_nspj,mask_nsoj).squeeze(1)# [64,1,30] ->[batch_size,action_dim]
+            
+            # print('nqv:',next_q_values)
+            # print(next_q_values)
+            '''
             min_value = torch.finfo(next_q_values.dtype).min
             min_value = torch.tensor(min_value).to(self.device)
             mask_next_q_values = torch.where(mask_nspj,min_value.expand_as(next_q_values),next_q_values).to(self.device)
             max_nqv,_ = torch.max(mask_next_q_values,dim=1)
             max_nqv = max_nqv.view(-1,1)
+            '''
+            max_nqv,_ = torch.max(next_q_values,dim = 1)
+            max_nqv = max_nqv.view(-1,1)
+
             q_targets = rewards + self.gamma*max_nqv*(1-dones)
-        dqn_loss = torch.mean(F.mse_loss(q_values,q_targets))
+            '''
+            print('max_nqv:',max_nqv.shape)
+            print(max_nqv)
+            print('rewards:',rewards.shape)
+            print(rewards)
+            print('dones:',dones.shape)
+            print(dones)
+            print('q_targets:',q_targets.shape)
+            print(q_targets)
+            '''
+        dqn_loss = F.smooth_l1_loss(q_values,q_targets)
+        # print(q_values)
+        # print(q_targets)
+        # print('mse:',F.mse_loss(q_values,q_targets))
+        # dqn_loss = torch.mean(F.mse_loss(q_values,q_targets))
         self.loss += dqn_loss
         #print(dqn_loss.item())
         self.optimizer.zero_grad()
         dqn_loss.backward()
         self.optimizer.step()
 
-        if self.count % self.target_update == 0:
+        if (self.count+1) % self.target_update == 0:
             self.target_actor.load_state_dict(self.actor.state_dict())
-        if self.count % 1000 == 0:
+        if (self.count+1) % 1000 == 0:
             print('loss:',self.loss.item()/1000)
             self.loss = 0
         self.count += 1

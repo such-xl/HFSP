@@ -109,7 +109,9 @@ class TrainingEnv():
     def step(self,idle_machine,action,act_jobs):
         reward = -1
         done = False
-        if action==29 or action == len(act_jobs):         #机器选择空闲,对环境不产生影响
+        act_jobs.append(0) #代表空闲
+        action %= len(act_jobs)
+        if action == len(act_jobs)-1:         #机器选择空闲,对环境不产生影响
             # 奖励设置
             reward = -2
         else:
