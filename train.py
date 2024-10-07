@@ -1,5 +1,6 @@
 import os
 import torch
+import random
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.utils import Plotter
 from scheduling_env.replay_buffer import ReplayBuffer
@@ -12,7 +13,7 @@ env = TrainingEnv()
 plotter = Plotter(False)
 #self,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon,learning_rate,gamma,target_update, device
 lr = 2e-6
-num_episodes = 1000
+num_episodes = 2000
 job_input_dim  = 128
 machine_input_dim = 5
 job_hidden_dim = machine_hidden_dim = 128
@@ -20,28 +21,34 @@ action_dim = 30
 num_heads = 1
 job_seq_len = 30
 machine_seq_len = 30
-gamma = 0.98
-epsilon = 0.01
+gamma = 0.99
+epsilon_start = 1
+epsilon_end = 0.005
+epsilon_decay = 1000
+tau = 0.005
 target_update = 100
-buffer_size = 5000
-minimal_size = 500
-batch_size = 256
+buffer_size = 100000
+minimal_size = 1000
+batch_size = 512
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-job_file_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/data/Job_Data/Hurink_Data/Text/rdata/la01.fjs'
+job_file_root_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/train_data/'
 replay_buffer  = ReplayBuffer(buffer_size,job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
-agent = Agent(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon,lr,gamma,target_update,device)
-span_time = []
+agent = Agent(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon_start,epsilon_end,epsilon_decay,tau,lr,gamma,target_update,device)
+span_times = [ [] for _ in range(40)]
+step_done  = 0
 for i in range(num_episodes): #episodes
     print('episode:',i)
     #Generate an FJSS instance from teh emulating environment
+    num = random.randint(0,39) 
+    job_file_path = job_file_root_path + 'la'+str(num+1).zfill(2)+'.fjs'
     s_p_m,s_p_j,s_o_j,idle_agent,act_jobs = env.reset(jobs_path=job_file_path)
     done = False
-
         # all of the idle agents sample & execute a action
         # s_p_m,s_p_j,s_o_j,idle_agent,act_jobs,done = env.run_a_time_step()
     while idle_agent and not done:
         # smmple a action
-        action = agent.take_action(s_p_m,s_p_j,s_o_j,act_jobs)
+        action = agent.take_action(s_p_m,s_p_j,s_o_j,act_jobs,step_done)
+        step_done += 1
         # execute action
         n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,reward,done = env.step(idle_agent,action,act_jobs)
         # store the info to replay buffer
@@ -68,14 +75,18 @@ for i in range(num_episodes): #episodes
                 'mask_nsoj':bmask_nsoj
             }
             agent.update(transition_dict=transition_dict)
+    print(job_file_path)
     print('time:', env.time_step)
-    span_time.append(env.time_step)
- 
+    span_times[num].append(env.time_step)
+agent.save_model('model.pth') 
+import numpy as np
+np.save('makespan',np.array(span_times))
     #plotter.gant_chat(env.draw_data)
     # for j in env.draw_data:
     #     for i in j:
     #         print(i,end=' ')
     #     print()
+'''
 import matplotlib.pyplot as plt
 
 class Plotting:
@@ -84,10 +95,10 @@ class Plotting:
         plt.show()
 plot  = Plotting()
 plot.plot_data(span_time)
-plt.savefig('a.png')
+plt.savefig('b.png')
 '''            
 
-
+'''
 while flag:
     # 加工一个time_step
     busy_agent = env.busy_agents.head

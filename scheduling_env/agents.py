@@ -5,7 +5,7 @@ from .model import Actor
 from .utils import StateNorm
 class Agent():
     def __init__(self,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,
-                 action_dim,num_heads,job_seq_len,machine_seq_len,epsilon,learning_rate,gamma,target_update, device) -> None:
+                 action_dim,num_heads,job_seq_len,machine_seq_len,epsilon_start,epsilon_end,epsilon_decay,tau,learning_rate,gamma,target_update, device) -> None:
         self.actor = Actor(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads).to(device)
         self.target_actor = Actor(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads).to(device)
         self.optimizer = torch.optim.Adam(self.actor.parameters(),lr=learning_rate)
@@ -13,15 +13,21 @@ class Agent():
         self.job_seq_len = job_seq_len
         self.machine_seq_len = machine_seq_len
         self.action_dim = action_dim
-        self.epsilon = epsilon
+        self.epsilon_start = epsilon_start
+        self.epsilon_end = epsilon_end
+        self.epsilon_decay = epsilon_decay
+        self.tau = tau
         self.gamma = gamma
         self.target_update = target_update
         self.device = device
         self.state_norm = StateNorm(job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
         self.count = 0
         self.loss = 0
-    def take_action(self,s_p_m,s_p_j,s_o_j,act_jobs):
-        if np.random.random() < self.epsilon:
+    def take_action(self,s_p_m,s_p_j,s_o_j,act_jobs,step_done):
+
+        
+        eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(-1. * step_done / self.epsilon_decay)
+        if np.random.random() < eps_threshold:
             action  = np.random.randint(0,len(act_jobs)+1) #最后一个动作代表空闲
         else:
             s_p_m = torch.tensor([s_p_m],dtype=torch.float).to(self.device)
@@ -60,6 +66,14 @@ class Agent():
         mask_nspj = torch.tensor(transition_dict['mask_nspj'],dtype=torch.bool).to(self.device)
         mask_nsoj = torch.tensor(transition_dict['mask_nsoj'],dtype=torch.bool).to(self.device)
         q_values = self.actor(spms,spjs,sojs,mask_spj,mask_soj).squeeze(1)# [batch_size,1,action_dim]->[batch_size,action_dim]
+
+        if self.check_for_nan_inf(q_values):
+            torch.save(spms,'spms.pt')
+            torch.save(spjs,'spjs,pt')
+            torch.save(sojs,'sojs.pt')
+            torch.save(mask_spj,'mask_spj.pt')
+            torch.save(mask_soj,'mask_soj.pt')
+            raise ValueError(f"q_values contains NaN or Inf values")
         q_values = q_values.gather(1,actions) # [batch_size,1]
         
         '''
@@ -71,8 +85,15 @@ class Agent():
         print(q_values)
         '''
         with torch.no_grad():
-            next_q_values = self.target_actor(nspms,nspjs,nsojs,mask_nspj,mask_nsoj).squeeze(1)# [64,1,30] ->[batch_size,action_dim]
             
+            next_q_values = self.target_actor(nspms,nspjs,nsojs,mask_nspj,mask_nsoj).squeeze(1)# [64,1,30] ->[batch_size,action_dim]
+            if self.check_for_nan_inf(next_q_values):
+                torch.save(nspms,'nspms.pt')
+                torch.save(nspjs,'nspjs,pt')
+                torch.save(nsojs,'nsojs.pt')
+                torch.save(mask_nspj,'mask_nspj.pt')
+                torch.save(mask_nsoj,'mask_nsoj.pt')
+                raise ValueError(f"next_q_values contains NaN or Inf values")
             # print('nqv:',next_q_values)
             # print(next_q_values)
             '''
@@ -105,11 +126,26 @@ class Agent():
         #print(dqn_loss.item())
         self.optimizer.zero_grad()
         dqn_loss.backward()
+        torch.nn.utils.clip_grad_value_(self.actor.parameters(), 200)
         self.optimizer.step()
-
+        '''
         if (self.count+1) % self.target_update == 0:
             self.target_actor.load_state_dict(self.actor.state_dict())
+        '''
+        actor_state_dict=self.actor.state_dict()
+        target_state_dict = self.target_actor.state_dict()
+        for key in actor_state_dict:
+            target_state_dict[key] = actor_state_dict[key]*self.tau + target_state_dict[key]*(1-self.tau)
+
+        self.target_actor.load_state_dict(target_state_dict)
         if (self.count+1) % 1000 == 0:
             print('loss:',self.loss.item()/1000)
             self.loss = 0
         self.count += 1
+    def save_model(self,path):
+        torch.save(self.actor.state_dict(),path)
+
+    def check_for_nan_inf(self,tensor, name="tensor"):
+        if torch.isnan(tensor).any() or torch.isinf(tensor).any():
+            return True
+            raise ValueError(f"{name} contains NaN or Inf values")
