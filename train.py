@@ -6,7 +6,7 @@ from scheduling_env.utils import Plotter
 from scheduling_env.replay_buffer import ReplayBuffer
 from scheduling_env.agents import Agent
 
-
+"""test"""
 #from scheduling_env.model import JobMachineAttentionModel
 # 创建并初始化环境，从文件中解析job和machine信息，对环境初始化
 env = TrainingEnv()
