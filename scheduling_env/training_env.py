@@ -5,6 +5,7 @@
 '''
 from .job_list import JobList
 from .machine_list import MachineList
+import math
 class TrainingEnv():
     # 初始化环境
     def __init__(self) -> None:
@@ -112,14 +113,14 @@ class TrainingEnv():
         act_jobs.append(0) #代表空闲
         action %= len(act_jobs)
         if len(act_jobs) == 1: #仅有一个空闲动作
-            reward = 0
+            reward = -math.log(self._time_step+0.01)
         elif action == len(act_jobs)-1:         #机器选择空闲,对环境不产生影响
-            # 奖励设置
-            reward = 1/len(act_jobs)
-            # need_time = 0
-            # for job in act_jobs[0:-1]:
-            #     need_time += job.get_t_process(idle_machine.id) 
-            # reward = -1 - reward
+            # 奖励设置 
+            need_time = 0
+            for job in act_jobs[0:-1]:
+                need_time += job.get_t_process(idle_machine.id)
+            need_time = need_time/(len(act_jobs)-1) + 1 
+            reward = -math.log(need_time)
         else:
             # machine load job
             act_jobs[action].load_to_machine(idle_machine.id)
@@ -130,11 +131,10 @@ class TrainingEnv():
 
             self._pending_jobs.disengage_node(act_jobs[action])
             self.in_progress_jobs.append(act_jobs[action])
-            #reward = -(act_jobs[action].get_t_process(idle_machine.id))
+            reward = -math.log(act_jobs[action].get_t_process(idle_machine.id))
             # 统计数据绘图
             self._draw_data[act_jobs[action].id-1].append([idle_machine.id,self._time_step,self._time_step])
         next_idle_agent = idle_machine.next
-        reward = 1
         if next_idle_agent:
             n_s_p_j = []
             n_s_p_m  = [next_idle_agent.get_machine_state()]

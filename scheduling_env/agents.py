@@ -25,7 +25,7 @@ class Agent():
         self.loss = 0
     def take_action(self,s_p_m,s_p_j,s_o_j,act_jobs,step_done):
 
-        
+         
         eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(-1. * step_done / self.epsilon_decay)
         if np.random.random() < eps_threshold:
             action  = np.random.randint(0,len(act_jobs)+1) #最后一个动作代表空闲
@@ -144,6 +144,8 @@ class Agent():
         self.count += 1
     def save_model(self,path):
         torch.save(self.actor.state_dict(),path)
+    def load_model(self,path):
+        self.actor.load_state_dict(torch.load(path))
 
     def check_for_nan_inf(self,tensor, name="tensor"):
         if torch.isnan(tensor).any() or torch.isinf(tensor).any():

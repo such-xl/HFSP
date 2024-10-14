@@ -18,7 +18,7 @@ job_input_dim  = 128
 machine_input_dim = 5
 job_hidden_dim = machine_hidden_dim = 128
 action_dim = 30
-num_heads = 1
+num_heads = 8
 job_seq_len = 30
 machine_seq_len = 30
 gamma = 0.99
@@ -32,16 +32,15 @@ minimal_size = 1000
 batch_size = 512
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 job_file_root_path = os.path.dirname(os.path.abspath(__file__))+'/scheduling_env/train_data/'
+jobs_name = os.listdir(job_file_root_path)
 replay_buffer  = ReplayBuffer(buffer_size,job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
 agent = Agent(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon_start,epsilon_end,epsilon_decay,tau,lr,gamma,target_update,device)
-span_times = [ [] for _ in range(40)]
 step_done  = 0
 for i in range(num_episodes): #episodes
     print('episode:',i)
     #Generate an FJSS instance from teh emulating environment
-    num = random.randint(0,39) 
-    job_file_path = job_file_root_path + 'la'+str(num+1).zfill(2)+'.fjs'
-    s_p_m,s_p_j,s_o_j,idle_agent,act_jobs = env.reset(jobs_path=job_file_path)
+    job_path = job_file_root_path+random.choice(jobs_name)
+    s_p_m,s_p_j,s_o_j,idle_agent,act_jobs = env.reset(jobs_path=job_path)
     done = False
         # all of the idle agents sample & execute a action
         # s_p_m,s_p_j,s_o_j,idle_agent,act_jobs,done = env.run_a_time_step()
@@ -75,28 +74,28 @@ for i in range(num_episodes): #episodes
                 'mask_nsoj':bmask_nsoj
             }
             agent.update(transition_dict=transition_dict)
-    print(job_file_path)
     print('time:', env.time_step)
-    span_times[num].append(env.time_step)
-agent.save_model('model.pth') 
-import numpy as np
-np.save('makespan',np.array(span_times))
+    print(job_path)
+agent.save_model('modellog(r).pth') 
     #plotter.gant_chat(env.draw_data)
     # for j in env.draw_data:
     #     for i in j:
     #         print(i,end=' ')
     #     print()
-'''
-import matplotlib.pyplot as plt
 
-class Plotting:
-    def plot_data(self, data):
-        plt.plot(data)
-        plt.show()
-plot  = Plotting()
-plot.plot_data(span_time)
-plt.savefig('b.png')
-'''            
+# import matplotlib.pyplot as plt
+# x = list(range(len(rewards)))
+# plt.plot(x, rewards, label='rewards', marker='o')  # 为每个数据点添加‘o’标记
+# plt.plot(x, span_times, label='span_times', marker='^')  # 为每个数据点添加‘^’标记
+
+# # 添加标签和标题
+# plt.xlabel('Index')
+# plt.ylabel('Value')
+# plt.title('Multiple Y Data on Same X Axis')
+# plt.legend()
+# plt.savefig('k.png')
+# # 展示图形
+# plt.show()
 
 '''
 while flag:
