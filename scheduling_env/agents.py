@@ -3,6 +3,9 @@ import torch.nn.functional as F
 import numpy as np
 from .model import Actor
 from .utils import StateNorm
+
+
+
 class Agent():
     def __init__(self,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,
                  action_dim,num_heads,job_seq_len,machine_seq_len,epsilon_start,epsilon_end,epsilon_decay,tau,learning_rate,gamma,target_update, device) -> None:
@@ -25,7 +28,7 @@ class Agent():
         self.loss = 0
     def take_action(self,s_p_m,s_p_j,s_o_j,act_jobs,step_done):
 
-         
+
         eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(-1. * step_done / self.epsilon_decay)
         if np.random.random() < eps_threshold:
             action  = np.random.randint(0,len(act_jobs)+1) #最后一个动作代表空闲

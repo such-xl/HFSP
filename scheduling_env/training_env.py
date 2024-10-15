@@ -152,7 +152,20 @@ class TrainingEnv():
                 if next_idle_agent or done:
                     break
         return n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,reward,done
-
+    def reward_func_0(self,action,act_jobs,machine_id):
+        reward:float = 0
+        if len(act_jobs) == 1: # 仅存在一个空闲动作, 
+            reward = -math.log(self.time_step+0.01)
+        elif action == len(act_jobs)-1: # 智能体选择空闲动作
+            avg_t = 0
+            for job in act_jobs[0:-1]:
+                avg_t += job.get_t_process(machine_id)
+            avg_t = avg_t/(len(act_jobs)-1)
+            reward = -math.log(avg_t+1)
+        else:
+            reward = -math.log(act_jobs[action].get_t_process(machine_id))
+        return reward
+    
     @property
     def action_space(self):
         return self._action_space
