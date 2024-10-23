@@ -6,7 +6,6 @@ from .job import Job
 class JobList(DoublyLinkList):
     def __init__(self) -> None:
         super().__init__() 
-
     # 从文件中获取作业信息
     def decode_job_flie(self,path:str):
         machine_num: int = 0
@@ -33,7 +32,7 @@ class JobList(DoublyLinkList):
                     i  += (1+line[i]*2)
  
                 #self.prepend(Job(job_id,r-1,procs))
-                self.append(Job(job_id,r-1,procs,line))
+                self.append(Job(job_id,r-1,procs,line,0))
         return machine_num
                 
 

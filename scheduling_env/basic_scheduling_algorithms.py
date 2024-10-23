@@ -1,3 +1,4 @@
+import random
 def sjf(jobs: list, machine_id: int) -> int:
     '''短作业优先'''
 
@@ -12,6 +13,9 @@ def sjf(jobs: list, machine_id: int) -> int:
             min_t = c_t
             action = i
     return action    
+
+def random_action(jobs:list) -> int:
+    return random.randint(0,len(jobs))
 
 
 
