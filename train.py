@@ -41,7 +41,7 @@ class Train():
             G = 0
             #Generate an FJSS instance from teh emulating environment
             job_name = random.choice(jobs_name)
-            # job_name = 'rla15.fjs'
+            job_name = 'vla20.fjs'
             job_path = train_data_path+job_name
             s_p_m,s_p_j,s_o_j,idle_agent,act_jobs = env.reset(jobs_path=job_path)
             done = False
@@ -76,7 +76,7 @@ class Train():
             print('epsodetime:',end_time,'gt:',gt,'tt',trt,G)
             print(job_path)
         agent.save_model(f'model{reward_type}.pth')
-        with open(f'logs/record{reward_type}attn.json', 'w') as json_file:
+        with open(f'logs/record{reward_type}iattn.json', 'w') as json_file:
             record = {}
             record['makespan'] = record_makespan
             record['reward'] = record_reward
@@ -114,11 +114,11 @@ class Train():
 
 
 lr = 2e-6
-num_episodes = 3000
-job_input_dim  = 72 
+num_episodes = 1000
+job_input_dim  = 42 
 machine_input_dim = 5
-job_hidden_dim = 64
-machine_hidden_dim = 32
+job_hidden_dim = 32
+machine_hidden_dim = 16
 action_dim = 30
 num_heads = 2
 job_seq_len = 30
@@ -138,4 +138,4 @@ trainer = Train()
 reward_type = [0,1,2]
 
 trainer.train_model(reward_type[2],num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device)
-#trainer.basic_scheduling(1,reward_type=reward_type[2])
+# trainer.basic_scheduling(1,reward_type=reward_type[2])

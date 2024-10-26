@@ -23,7 +23,7 @@ class ReplayBuffer:
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         
         with torch.no_grad():
-            self.buffer = torch.zeros((capacity, 8773)).to(self.device)
+            self.buffer = torch.zeros((capacity, 5173)).to(self.device)
 
     def add(self, s_p_m, s_p_j, s_o_j, action, reward, n_s_p_m, n_s_p_j, n_s_o_j, done):
         spj, mask_spj = self.state_norm.job_seq_norm(s_p_j, 0)
@@ -32,18 +32,18 @@ class ReplayBuffer:
         nsoj, mask_nsoj = self.state_norm.job_seq_norm(n_s_o_j, 1)
         self.buffer[self.pos % self.buffer_size] *= 0
         self.buffer[self.pos % self.buffer_size, 0: 5] += self.to_torch(s_p_m[0])
-        self.buffer[self.pos % self.buffer_size, 5: 2165] += self.to_torch(spj.ravel())
-        self.buffer[self.pos % self.buffer_size, 2165: 4325] += self.to_torch(soj.ravel())
-        self.buffer[self.pos % self.buffer_size, 4325: 4326] += self.to_torch(action)
-        self.buffer[self.pos % self.buffer_size, 4326: 4327] += self.to_torch(reward)
-        self.buffer[self.pos % self.buffer_size, 4327: 4327 + 5] += self.to_torch(n_s_p_m[0])
-        self.buffer[self.pos % self.buffer_size, 4332: 4332 + 2160] += self.to_torch(nspj.ravel())
-        self.buffer[self.pos % self.buffer_size, 6492: 6492 + 2160] += self.to_torch(nsoj.ravel())
-        self.buffer[self.pos % self.buffer_size, 8652: 8652 + 1] += self.to_torch((done))
-        self.buffer[self.pos % self.buffer_size, 8653: 8683] += self.to_torch(mask_spj)
-        self.buffer[self.pos % self.buffer_size, 8683: 8713] += self.to_torch(mask_soj)
-        self.buffer[self.pos % self.buffer_size, 8713: 8743] += self.to_torch(mask_nspj)
-        self.buffer[self.pos % self.buffer_size, 8743: 8773] += self.to_torch(mask_nsoj)
+        self.buffer[self.pos % self.buffer_size, 5: 1265] += self.to_torch(spj.ravel())
+        self.buffer[self.pos % self.buffer_size, 1265: 2525] += self.to_torch(soj.ravel())
+        self.buffer[self.pos % self.buffer_size, 2525: 2526] += self.to_torch(action)
+        self.buffer[self.pos % self.buffer_size, 2526: 2527] += self.to_torch(reward)
+        self.buffer[self.pos % self.buffer_size, 2527: 2532] += self.to_torch(n_s_p_m[0])
+        self.buffer[self.pos % self.buffer_size, 2532: 3792] += self.to_torch(nspj.ravel())
+        self.buffer[self.pos % self.buffer_size, 3792: 5052] += self.to_torch(nsoj.ravel())
+        self.buffer[self.pos % self.buffer_size, 5052: 5053] += self.to_torch((done))
+        self.buffer[self.pos % self.buffer_size, 5053: 5083] += self.to_torch(mask_spj)
+        self.buffer[self.pos % self.buffer_size, 5083: 5113] += self.to_torch(mask_soj)
+        self.buffer[self.pos % self.buffer_size, 5113: 5143] += self.to_torch(mask_nspj)
+        self.buffer[self.pos % self.buffer_size, 5143: 5173] += self.to_torch(mask_nsoj)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -54,18 +54,18 @@ class ReplayBuffer:
         ten = self.buffer[samples_idx, :]
         # ten = self.to_torch(tmp)
         return BufferEntity(ten[:, 0:5].reshape((batch_size,1,-1)),
-                            ten[:, 5: 2165].reshape((batch_size, 30, -1)),
-                            ten[:, 2165: 4325].reshape((batch_size, 30, -1)),
-                            ten[:, 4325: 4326],
-                            ten[:, 4326: 4327], 
-                            ten[:, 4327: 4327 + 5].reshape((batch_size,1,-1)),
-                            ten[:, 4332: 4332 + 2160].reshape((batch_size, 30, -1)),
-                            ten[:, 6492: 6492 + 2160].reshape((batch_size, 30, -1)),
-                            ten[:, 8652: 8652 + 1], 
-                            ten[:, 8653: 8683], 
-                            ten[:, 8683: 8713],
-                            ten[:, 8713: 8743], 
-                            ten[:, 8743: 8773],
+                            ten[:, 5: 1265].reshape((batch_size, 30, -1)),
+                            ten[:, 1265: 2525].reshape((batch_size, 30, -1)),
+                            ten[:, 2525: 2526],
+                            ten[:, 2526: 2527], 
+                            ten[:, 2527: 2532].reshape((batch_size,1,-1)),
+                            ten[:, 2532: 3792].reshape((batch_size, 30, -1)),
+                            ten[:, 3792: 5052].reshape((batch_size, 30, -1)),
+                            ten[:, 5052: 5053], 
+                            ten[:, 5053: 5083], 
+                            ten[:, 5083: 5113],
+                            ten[:, 5113: 5143], 
+                            ten[:, 5143: 5173],
                             )
         # return bufferEntity(*container)
         # return tmp

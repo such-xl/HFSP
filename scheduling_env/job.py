@@ -1,5 +1,6 @@
 from .utils import Node
 class Job(Node):
+    code_len = 0
     def __init__(self,id:int,process_num:int,process_list:list,encode:list,insert_time:int) -> None:
         super().__init__(None)
         self._id = id #job序号,从1开始
@@ -25,7 +26,6 @@ class Job(Node):
             pest.append(ct)
         return pest
     def show(self):
-        # print(f'作业{self._id} 工序数{self._process_num}')
         print(len(self._encode))
         # for i,p in enumerate(self._process_list,start=1):
         #     print(f'工序{i}')
@@ -45,11 +45,6 @@ class Job(Node):
     
     # 判断当前工序是否可被agent_i执行
     def match_machine(self,machine_id) -> bool:
-        # if machine_id == 2:
-        #     print("-----")
-        #     print(self._process_list[self._progress-1])
-        #     print(machine_id in self._process_list[self._progress-1])
-        #     print("-----")
         return machine_id in self._process_list[self._progress-1]
     
     # 将job装载至machine
@@ -80,13 +75,15 @@ class Job(Node):
     #获取job state 编码
     def get_job_state(self):
         ''''''
-        job_state = [self._id,self._progress,self._machine_id,self._t_processed,0]
+        job_state = [self._id,self._machine_id,self._t_processed,0]
         for p in self._process_list[self._progress-1:self._progress-1+3]:
-            for key, value in p.items():
-                job_state.extend([key,value])
+            job_state.append(next(iter(p.values())))
+            for key in p.keys():
+                job_state.append(key)
             job_state.append(0)
-        if len(job_state)<72:
-            job_state.extend([0]*(72-len(job_state)))
+        if len(job_state)<42:
+            job_state.extend([0]*(42-len(job_state)))
+        Job.code_len = max(Job.code_len,len(job_state))
         return job_state
     def earliest_start_time_update(self,timestep):
         self._earliest_start_time = timestep

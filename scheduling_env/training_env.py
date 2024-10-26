@@ -4,10 +4,12 @@
     2: 判断所有job是否完成 over if done else repeat 1
 '''
 from .job_list import JobList
+from .job import Job
 from .machine_list import MachineList
 import math
 class TrainingEnv():
     # 初始化环境
+    count_action = 1000
     def __init__(self,reward_type = 0) -> None:
         self._action_space = None   #动作空间(0,1)连续值，应对不同情况下不同agent动作空间不一致
         self._agents_num = 0        #总agent数
@@ -22,7 +24,7 @@ class TrainingEnv():
         self._time_step = 0
         self._draw_data = None
         self._reward_type = reward_type
-
+        self._max_len = 0
     def get_jobs_from_file(self, jobs_path:str):
         self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._pending_jobs.length
@@ -87,7 +89,7 @@ class TrainingEnv():
         s_p_j = []
         act_jobs = []
         while idle_agent:
-            s_p_m = [self._idle_agents.head.get_machine_state()]
+            s_p_m = [self._idle_agents.head.bin_code]
             act_jobs,_ = self.get_agent_actions(idle_agent.id)
             for aj in act_jobs:
                 s_p_j.append(aj.get_job_state())
@@ -102,7 +104,7 @@ class TrainingEnv():
         self._completed_jobs = JobList()
         #返回 初始化状态，(第一个idle machine(s_p_m),其可选job(s_p_j)正在执行作业job(s_o_j)                        
         idle_agent = self._idle_agents.head
-        s_p_m = [idle_agent.get_machine_state()]
+        s_p_m = [idle_agent.bin_code]
         act_jobs, _ = self.get_agent_actions(idle_agent.id)
         s_p_j = []
         for aj in act_jobs:
@@ -113,6 +115,7 @@ class TrainingEnv():
     def step(self,idle_machine,action,act_jobs):
         done = False
         reward = 0
+        TrainingEnv.count_action = min(len(act_jobs),TrainingEnv.count_action)
         act_jobs.append(0) #代表空闲
         # action %= len(act_jobs)
         if self._reward_type == 0:
@@ -121,7 +124,8 @@ class TrainingEnv():
             reward = self.reward_func_1(action,act_jobs,idle_machine.id)
         elif self._reward_type == 2:
             reward = self.reward_func_2(action,act_jobs,idle_machine.id)
-        else:
+        elif self._reward_type == 3:
+            reward = self.reward_func_3(action,act_jobs,idle_machine.id)
             reward = 0
         if action == len(act_jobs)-1:         #机器选择空闲,对环境不产生影响
             pass
@@ -138,10 +142,17 @@ class TrainingEnv():
             # 统计数据绘图
             self._draw_data[act_jobs[action].id-1].append([idle_machine.id,self._time_step,self._time_step])
         next_idle_agent = idle_machine.next
+
+        # 逻辑待优化
+        while next_idle_agent: #遍历idle_agent link,找到第一个动作不为空的agent
+            next_act_jobs,_ = self.get_agent_actions(next_idle_agent.id)
+            if len(next_act_jobs)>0:
+                break
+            next_idle_agent = next_idle_agent.next
+
         if next_idle_agent:
             n_s_p_j = []
-            n_s_p_m  = [next_idle_agent.get_machine_state()]
-            next_act_jobs,_ = self.get_agent_actions(next_idle_agent.id)
+            n_s_p_m  = [next_idle_agent.bin_code]
             for aj in next_act_jobs:
                 n_s_p_j.append(aj.get_job_state())
             n_s_o_j = []
@@ -194,6 +205,7 @@ class TrainingEnv():
                 at = self._time_step + tp #实际加工结束的时间
                 reward = tp/(at-est)
         return reward
+        
     
     def reward_func_2(self,action,act_jobs,machine_id):
         """

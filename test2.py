@@ -1,5 +1,3 @@
-a = True
-b = False
-c = True
-if (a and c) or b:
-    print('True')
+a = 12
+b = list(bin(a))
+print(b)

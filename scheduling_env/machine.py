@@ -15,6 +15,12 @@ class Machine(Node):
         self._t_process = 0            #当前加工的工序需要的加工时间
         self._t_processed = 0          #目前已经加工当前工序的时间
         self._encode = [self._id,self._status,0,0,0] #id,status,加工作业id,第几道工序,加工时间
+        self.bin_code = self.get_bin_code()
+    def get_bin_code(self):
+        binary_str = bin(self._id)[2:]
+        binary_str = binary_str.zfill(5)
+        binary_list = [int(digit) for digit in binary_str]
+        return binary_list
     #从动作空间中采样一个动作
     def sample_action(self,obs,act_jos,act_jos_id):
         if len(act_jos) == 1:
