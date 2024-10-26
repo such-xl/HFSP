@@ -1,6 +1,6 @@
 # HFSP
 Hybird flow shop scheduling problems
-
+# new new 
 # issue
 在env.run_a_time_step function中，按busy_agent_list和in_progress_jobs_list的顺序依次执行各自的run_a_time_step()
 理论上agent与其对应的job在各自链表中的位置是一致的，但这种处理方式缺乏agent异常处理。后续如果有需要应该补齐，
