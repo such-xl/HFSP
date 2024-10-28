@@ -23,19 +23,18 @@ class TrainingEnv():
         self._draw_data = None        #画图信息
         self._time_step = 0
         self._reward_type = reward_type
-        self._max_len = 0
-
+        self._decision_agent = None # 某時刻参与决策的所有机器
     def get_jobs_from_file(self, jobs_path:str):
         self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._pending_jobs.length
         self._idle_agents = MachineList(self._agents_num)
         self._draw_data = [[] for i in range(self._jobs_num)]
 
-    def get_agent_actions(self,agent_id):
+    def get_agent_actions(self,machine):
         act_jobs = []                   
         pending_job = self._pending_jobs.head
         while pending_job:
-            if pending_job.match_machine(agent_id):             #该job可被当前agent加工
+            if pending_job.match_machine(machine.id):             #该job可被当前agent加工
                 act_jobs.append(pending_job)
             pending_job = pending_job.next
         return act_jobs
@@ -104,14 +103,14 @@ class TrainingEnv():
         self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
         self._completed_jobs = JobList()
         #返回 初始化状态，(第一个idle machine(s_p_m),其可选job(s_p_j)正在执行作业job(s_o_j)   
-        idle_agents = []                     
+        self._decision_agent = []
         idle_agent = self._idle_agents.head
         while idle_agent:
             if self.is_decision_agent(idle_agent.id):
-                idle_agents.append(idle_agent)
+                self._decision_agent.append(idle_agent)
             idle_agent = idle_agent.next 
         self._time_step = 0
-        return idle_agents
+        return self._decision_agent
     # 
     def step(self):
         # record = []
@@ -217,6 +216,6 @@ class TrainingEnv():
     @property
     def time_step(self):
         return self._time_step
-    @time_step.setter
-    def time_step(self, time_step):
-        self._time_step = time_step
+    @property
+    def decision_agent(self):
+        return self._decision_agent

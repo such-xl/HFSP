@@ -1,13 +1,14 @@
 import os
 import time
-
 import torch
 import random
 import json
+from collections import deque
+
 from scheduling_env.training_env import TrainingEnv
-from scheduling_env.utils import Plotter
+from scheduling_env.utils import StateNorm
 from scheduling_env.replay_buffer import ReplayBuffer
-from scheduling_env.agents import Agent,Agenta
+from scheduling_env.agents import Agent
 from scheduling_env import basic_scheduling_algorithms
 class Train():
     def __init__(self):
@@ -16,23 +17,18 @@ class Train():
     def train_model(self,reward_type,num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,
                     num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device):
         env = TrainingEnv(action_dim=action_dim,reward_type=reward_type)
+        state_norm = StateNorm(job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
+        state_deque = deque(maxlen=machine_seq_len)
         train_data_path = self.data_path +'train_data/'
-        jobs_name = os.listdir(train_data_path)
+        jobs_name = sorted(os.listdir(train_data_path))
         record_makespan = {}
         record_reward = {}
         for name in jobs_name:
             record_reward[name] = []
             record_makespan[name] = []
-        
+
         replay_buffer = ReplayBuffer(buffer_size,job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
         agent = Agent(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon_start,epsilon_end,epsilon_decay,tau,lr,gamma,target_update,device)
-        job_hidden_dim1 = 64
-        job_hidden_dim2 = 32
-        cfc_hidden_dim1 = 512
-        cfc_hidden_dim2 = 128 
-        # agent = Agenta(job_input_dim,job_hidden_dim1,job_hidden_dim2,machine_input_dim,machine_hidden_dim,cfc_hidden_dim1,
-        #                 cfc_hidden_dim2,action_dim,job_seq_len,machine_seq_len,epsilon_start,epsilon_end,epsilon_decay,tau,lr,gamma,target_update,device)
-        # train agent
         step_done  = 0
         for i in range(num_episodes): #episodes
             print('episode:',i)
@@ -43,27 +39,30 @@ class Train():
             job_name = random.choice(jobs_name)
             job_name = 'vla20.fjs'
             job_path = train_data_path+job_name
-            s_p_m,s_p_j,s_o_j,idle_agent,act_jobs = env.reset(jobs_path=job_path)
+            decision_machine = env.reset(jobs_path=job_path)
             done = False
-                # all of the idle agents sample & execute a action
-                # s_p_m,s_p_j,s_o_j,idle_agent,act_jobs,done = env.run_a_time_step()
-            while idle_agent and not done:
-                # smmple a action
-                action = agent.take_action(s_p_m,s_p_j,s_o_j,act_jobs,step_done)
-                step_done += 1
-                # execute action
-                n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,reward,done = env.step(idle_agent,action,act_jobs)
-                G += reward
-                # store the info to replay buffer
-                        
-                idle_agent = next_idle_agent
-                act_jobs = next_act_jobs
-                s_p_m,s_p_j,s_o_j = n_s_p_m,n_s_p_j,n_s_o_j
-                # for a in range(0, action_dim):
-                #     if a % (len(act_jobs) + 1) == action % (len(act_jobs) + 1):  # a 与 action同余，动作一致
-                replay_buffer.add(s_p_m, s_p_j, s_o_j, action, reward, n_s_p_m, n_s_p_j, n_s_o_j, done)
-                # train agent
+            while not done:
+                # 序贯决策
+                for machine in decision_machine:
+                    machine_state,job_state,actions = env.get_state(machine)
+                    # state预处理
+                    machine_padded_state,machine_mask = state_norm.machine_padding(machine_state)
+                    job_padded_state,job_mask = state_norm.machine_padding(job_state)
+                    # 采样一个动作
+                    action = agent.take_action(machine_state,job_state)
+                    # 提交动作
+                    env.commit_action(machine,actions,action) 
+                    state_deque.append((machine_padded_state,job_padded_state,machine_mask,job_mask,action))
+                # 执行
+                decision_machine,reward,done = env.step() # 获取的是平分的奖励
 
+                #将state存入buffer
+                while len(state_deque)>1:
+                    state = state_deque.popleft() #(machine_padded_state,job_padded_state,machine_mask,job_mask,action)
+                    next_state = state_deque[0]
+                    replay_buffer.add(*(state+next_state[:-1]),reward,done)
+                
+                # machine_state,job_state,machine_mask,job_mask,action,reward,done    
                 if replay_buffer.size()>=minimal_size:
                     transition = replay_buffer.sample(batch_size=batch_size)
                     dnt,tt=agent.update(transition)
