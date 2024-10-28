@@ -15,7 +15,7 @@ class Train():
 
     def train_model(self,reward_type,num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,
                     num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device):
-        env = TrainingEnv(reward_type)
+        env = TrainingEnv(action_dim=action_dim,reward_type=reward_type)
         train_data_path = self.data_path +'train_data/'
         jobs_name = os.listdir(train_data_path)
         record_makespan = {}
@@ -83,33 +83,38 @@ class Train():
             json.dump(record,json_file)
 
     def basic_scheduling(self,ty,reward_type=0):
-        env = TrainingEnv(reward_type=reward_type)
-        all_data_path = self.data_path+'/all_data/'
+        env = TrainingEnv(action_dim=action_dim,reward_type=reward_type)
+        all_data_path = self.data_path+'all_data/'
 
         jobs_name = os.listdir(all_data_path)
-        record_makespan = {}
-        record_reward = {}
+        # jobs_name = ['ela01.fjs']
+        # record_makespan = {}
+        # record_reward = {}
+        jobs_name = sorted(jobs_name)
         for job_name in jobs_name:
-            cr = 0
             job_path = all_data_path + job_name
-            _,_,_,idle_agent,act_jobs = env.reset(jobs_path=job_path)
+            idle_agents= env.reset(jobs_path=job_path)
             done = False
-            while idle_agent and not done:
-                action = None
-                if ty == 0: #短作业优先
-                    action = basic_scheduling_algorithms.sjf(act_jobs,idle_agent.id)
-                if ty == 1: #随机策略
-                    action = basic_scheduling_algorithms.random_action(act_jobs)
-                _,_,_,idle_agent,act_jobs,r,done = env.step(idle_agent,action,act_jobs)
-                cr += r
-            print(job_name,': ', env.time_step,f'rward:{cr}')
-            record_makespan[job_name] = env.time_step
-            record_reward[job_name] = cr
-        with open(f'logs/record_random{reward_type}.json','w') as f:
-            record = {}
-            record['makespan'] = record_makespan
-            record['reward'] = record_reward
-            json.dump(record,f)
+            while not done:
+                # 序贯决策
+                for agent in idle_agents:
+                    actions = env.get_agent_actions(agent.id)
+                    if ty == 0: #短作业优先
+                        action = basic_scheduling_algorithms.sjf(actions,agent.id)
+                    elif ty == 1: #随机策略
+                        action = basic_scheduling_algorithms.random_action(actions) 
+                    # 提交动作
+                    env.commit_action(agent,actions,action)
+                # 执行
+                idle_agents,done = env.step()    
+            print(job_name,': ', env.time_step,f'rward:{1}')
+            # record_makespan[job_name] = env.time_step
+            # record_reward[job_name] = cr
+        # with open(f'logs/record_random{reward_type}.json','w') as f:
+        #     record = {}
+        #     record['makespan'] = record_makespan
+        #     record['reward'] = record_reward
+        #     json.dump(record,f)
         print(len(jobs_name))
 
 
@@ -137,5 +142,5 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 trainer = Train()
 reward_type = [0,1,2]
 
-trainer.train_model(reward_type[2],num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device)
-# trainer.basic_scheduling(1,reward_type=reward_type[2])
+# trainer.train_model(reward_type[2],num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device)
+trainer.basic_scheduling(0,reward_type=reward_type[2])

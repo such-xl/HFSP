@@ -3,15 +3,15 @@
     1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
     2: 判断所有job是否完成 over if done else repeat 1
 '''
-from .job_list import JobList
-from .job import Job
-from .machine_list import MachineList
 import math
+from .job_list import JobList
+from .machine_list import MachineList
 class TrainingEnv():
     # 初始化环境
     count_action = 1000
-    def __init__(self,reward_type = 0) -> None:
-        self._action_space = None   #动作空间(0,1)连续值，应对不同情况下不同agent动作空间不一致
+    def __init__(self,action_dim,reward_type = 0) -> None:
+        self._action_space = None   #(1,30)
+        self._action_dim = action_dim 
         self._agents_num = 0        #总agent数
         self._jobs_num  = 0         #总作业数
         self._completed_jobs = JobList()
@@ -22,9 +22,9 @@ class TrainingEnv():
         self._idle_agents:MachineList = None
         self._draw_data = None        #画图信息
         self._time_step = 0
-        self._draw_data = None
         self._reward_type = reward_type
         self._max_len = 0
+
     def get_jobs_from_file(self, jobs_path:str):
         self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._pending_jobs.length
@@ -32,140 +32,96 @@ class TrainingEnv():
         self._draw_data = [[] for i in range(self._jobs_num)]
 
     def get_agent_actions(self,agent_id):
-        act_jobs,act_jobs_id = [],[]                   
+        act_jobs = []                   
         pending_job = self._pending_jobs.head
         while pending_job:
             if pending_job.match_machine(agent_id):             #该job可被当前agent加工
                 act_jobs.append(pending_job)
-                act_jobs_id.append(pending_job.id)
             pending_job = pending_job.next
-        return act_jobs,act_jobs_id
-         
-    # 所有忙碌agent和job更新一个time step
-    def run_a_time_step(self):
-        s_o_j = []
-        done = False
+        return act_jobs
+    def is_decision_agent(self,agent_id):
+        """是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策"""
+        pending_job = self._pending_jobs.head
+        while pending_job:
+            if pending_job.match_machine(agent_id):
+                return True
+            pending_job = pending_job.next
+        return False
+    def commit_action(self,agent,actions,action):
+        """提交智能体动作"""
+        if action == self._action_dim-1 or action == len(actions): #选择空闲，不对环境产生影响
+            return ...
+        job = actions[action]
+        agent.load_job(job)
+        job.load_to_machine(agent)
+
+        self._idle_agents.disengage_node(agent)
+        self._busy_agents.append(agent)
+        self._pending_jobs.disengage_node(job)
+        self._in_progress_jobs.append(job)
+
+    # 所有忙碌agent和job更新若干time_step,使得必产生空闲机器
+    def run(self):
+        #找出产生空闲机器的最短运行时间
         in_progress_job = self._in_progress_jobs.head
+        min_run_timestep = math.inf if in_progress_job else 1
+        while in_progress_job:
+            min_run_timestep = min(in_progress_job.t_process-in_progress_job.t_processed,min_run_timestep)
+            in_progress_job = in_progress_job.next 
+        # 更新min_run_timestep时序
         busy_agent = self._busy_agents.head
-        # 显然，忙碌agent与处理中的job数量总是一致的，且一一对应，所以可以用一个循环处理
-        while in_progress_job and busy_agent:
-            in_progress_job.run_a_time_step()
-            busy_agent.run_a_time_step()
-            if in_progress_job.status == 2:     #工序加工完成，转到待加工链表
-                next_job = in_progress_job.next
-                in_progress_job.earliest_start_time_update(self._time_step+1) #更新当前工序的实际最早开始时间
-                self._in_progress_jobs.disengage_node(in_progress_job)
-                self._pending_jobs.append(in_progress_job)
-                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
-                in_progress_job = next_job
-            elif in_progress_job.status == 0:   #所有工序加工完成，转到已完成链表
-                next_job = in_progress_job.next
-                self._in_progress_jobs.disengage_node(in_progress_job)
-                self._completed_jobs.append(in_progress_job)
-                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
-                in_progress_job = next_job
-            else:                               #当前工序，未加工完成
-                s_o_j.append(in_progress_job.get_job_state())
-                in_progress_job = in_progress_job.next
-            if busy_agent.status == 1:          #工序加工结束，转到idle
-                next_agent = busy_agent.next
+        while busy_agent:
+            busy_agent.run(min_run_timestep)
+            next_busy_agent = busy_agent.next
+            if busy_agent.status == 1: #工序加工结束
+                self._in_progress_jobs.disengage_node(busy_agent.job) # job的工序加工完成，使该job脱离in_progress_job链表
+                self._pending_jobs.append(busy_agent.job) if busy_agent.job.status==2 else self._completed_jobs.append(busy_agent.job) # 若jobs未完成，加入等待加工链表，若加工完成，加入完成链表
+                busy_agent.unload_job()
                 self._busy_agents.disengage_node(busy_agent)
                 self._idle_agents.append(busy_agent)
-                busy_agent = next_agent
-            elif busy_agent.status == 0:        #故障，相应处理，
-                next_agent = busy_agent.next
+            
+            elif busy_agent.status == 0: #机器故障,暂时不实现
                 self._busy_agents.disengage_node(busy_agent)
-                '''
-                    故障后相应处理，暂时未做
-                '''
                 self._faulty_agents.append(busy_agent)
-                busy_agent = next_agent
-            else:                               #当前时序，未加工完成
-                busy_agent = busy_agent.next
+            busy_agent = next_busy_agent
+        self._time_step += min_run_timestep 
+        done = False
         if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
             done = True
+            return [],done
+        # 获取需要决策的智能体
+        idle_agents = []
         idle_agent = self._idle_agents.head
-        s_p_m = [[0,0,0,0,0]]
-        s_p_j = []
-        act_jobs = []
         while idle_agent:
-            s_p_m = [self._idle_agents.head.bin_code]
-            act_jobs,_ = self.get_agent_actions(idle_agent.id)
-            for aj in act_jobs:
-                s_p_j.append(aj.get_job_state())
-            if len(act_jobs)>0:
-                break
+            if self.is_decision_agent(idle_agent.id):
+                idle_agents.append(idle_agent)
             idle_agent = idle_agent.next
-        self._time_step += 1
-        return s_p_m,s_p_j,s_o_j,idle_agent,act_jobs,done
+        if len(idle_agents)==0: # 如果没有需要决策的智能体，则继续run
+            return self.run()
+        return idle_agents,done
     def reset(self,jobs_path:str):
         self._draw_data = None
         self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
         self._completed_jobs = JobList()
-        #返回 初始化状态，(第一个idle machine(s_p_m),其可选job(s_p_j)正在执行作业job(s_o_j)                        
+        #返回 初始化状态，(第一个idle machine(s_p_m),其可选job(s_p_j)正在执行作业job(s_o_j)   
+        idle_agents = []                     
         idle_agent = self._idle_agents.head
-        s_p_m = [idle_agent.bin_code]
-        act_jobs, _ = self.get_agent_actions(idle_agent.id)
-        s_p_j = []
-        for aj in act_jobs:
-            s_p_j.append(aj.get_job_state())
+        while idle_agent:
+            if self.is_decision_agent(idle_agent.id):
+                idle_agents.append(idle_agent)
+            idle_agent = idle_agent.next 
         self._time_step = 0
-        return s_p_m,s_p_j,[],idle_agent,act_jobs   
+        return idle_agents
     # 
-    def step(self,idle_machine,action,act_jobs):
-        done = False
-        reward = 0
-        TrainingEnv.count_action = min(len(act_jobs),TrainingEnv.count_action)
-        act_jobs.append(0) #代表空闲
-        # action %= len(act_jobs)
-        if self._reward_type == 0:
-            reward = self.reward_func_0(action,act_jobs,idle_machine.id)
-        elif self._reward_type == 1:
-            reward = self.reward_func_1(action,act_jobs,idle_machine.id)
-        elif self._reward_type == 2:
-            reward = self.reward_func_2(action,act_jobs,idle_machine.id)
-        elif self._reward_type == 3:
-            reward = self.reward_func_3(action,act_jobs,idle_machine.id)
-            reward = 0
-        if action == len(act_jobs)-1:         #机器选择空闲,对环境不产生影响
-            pass
-        else:
-            # machine load job
-            act_jobs[action].load_to_machine(idle_machine.id)
-            idle_machine.load_job(act_jobs[action].id,act_jobs[action].get_t_process(idle_machine.id),act_jobs[action].progress)
-            # 节点转移
-            self._idle_agents.disengage_node(idle_machine)
-            self._busy_agents.append(idle_machine)
-
-            self._pending_jobs.disengage_node(act_jobs[action])
-            self.in_progress_jobs.append(act_jobs[action])
-            # 统计数据绘图
-            self._draw_data[act_jobs[action].id-1].append([idle_machine.id,self._time_step,self._time_step])
-        next_idle_agent = idle_machine.next
-
-        # 逻辑待优化
-        while next_idle_agent: #遍历idle_agent link,找到第一个动作不为空的agent
-            next_act_jobs,_ = self.get_agent_actions(next_idle_agent.id)
-            if len(next_act_jobs)>0:
-                break
-            next_idle_agent = next_idle_agent.next
-
-        if next_idle_agent:
-            n_s_p_j = []
-            n_s_p_m  = [next_idle_agent.bin_code]
-            for aj in next_act_jobs:
-                n_s_p_j.append(aj.get_job_state())
-            n_s_o_j = []
-            on_job = self._in_progress_jobs.head
-            while on_job:
-                n_s_o_j.append(on_job.get_job_state())
-                on_job = on_job.next
-        else: # 后续没有空闲机器，则调用run_a_time_step()直到出现idle
-            while True:
-                n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,done = self.run_a_time_step()
-                if (next_idle_agent and len(next_act_jobs)>0) or done:
-                    break
-        return n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,reward,done
+    def step(self):
+        # record = []
+        # busy_agent = self._busy_agents.head
+        # while busy_agent:
+        #     record.append((busy_agent.id,busy_agent.job.id,busy_agent.t_process-busy_agent.t_processed))
+        #     busy_agent = busy_agent.next
+        # print(record)
+        next_idle_agents,done = self.run()
+        return  next_idle_agents,done
     
     def reward_func_0(self,action,act_jobs,machine_id):
         """

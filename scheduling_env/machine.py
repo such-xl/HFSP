@@ -10,7 +10,7 @@ class Machine(Node):
         self._actions = actions
         self._status = status
         self._brain = brain
-        self._job_id = 0               #该机器正在加工的job的id
+        self._job = None              #该机器正在加工的job
         self._job_process = 0          #正在加工的工序
         self._t_process = 0            #当前加工的工序需要的加工时间
         self._t_processed = 0          #目前已经加工当前工序的时间
@@ -21,47 +21,38 @@ class Machine(Node):
         binary_str = binary_str.zfill(5)
         binary_list = [int(digit) for digit in binary_str]
         return binary_list
-    #从动作空间中采样一个动作
-    def sample_action(self,obs,act_jos,act_jos_id):
-        if len(act_jos) == 1:
-            return 0
-        return random.randint(1,len(act_jos)-1)
+
     def get_machine_state(self):
         return  self._encode
     def show(self):
-        # print(f'机器{self._id},状态{self._status}',end=' ')
-        print(self._encode)
         if self._status == 2:
             print(f'已经加工作业{self._job_id}的第{self._job_process}工序{self._t_processed}s,剩余{self._t_process-self._t_processed}')
         print()
-
+    
     # 装载job
-    def load_job(self,job_id,t_process,job_process):
-        self._job_id = job_id
-        self._job_process = job_process
-        self._t_process = t_process
-        self._t_processed = 0
+    def load_job(self,job):
+        """把job装置至machine"""
+        self._job = job
         self._status = 2
-        self._encode[1] = 2
-        self._encode[2] = job_id
-        self._encode[3] = job_process
-        self._encode[4] = 0
-    # 运行一个时序
-    def run_a_time_step(self):
-        '''
-            这里可添加机器故障
-        '''
-        self._t_processed += 1
-        self._encode[4] += 1
+        self._t_processed = 0
+        self._t_process = self._job.get_t_process(self._id)
+
+    def unload_job(self):
+        """卸载作业"""
+        self._job.unload_machine()
+        self._t_process = 0
+        self._t_processed = 0
+        self._job = None
+    def run(self,min_run_timestep):
+        """
+            运行 'min_run_timestep' 时序，让环境产生空闲机器
+        """
+        self._t_processed += min_run_timestep
+        self._job.run(min_run_timestep)
         if self._t_processed == self._t_process: #该工序加工完成
-            self._job_id = 0
-            self._encode[2] = 0
-            self._t_process = 0
-            self._encode[3] = 0
-            self._encode[4] = 0
             self._t_processed = 0
+            self._t_process = 0
             self._status = 1                     #将该机器的状态设置为空闲
-            self._encode[1] = 1
     @property
     def id(self):
         return self._id
@@ -90,7 +81,7 @@ class Machine(Node):
     def t_process(self):
         return self._t_process
     @t_process.setter
-    def T_process(self, t_process):
+    def t_process(self, t_process):
         self._t_process = t_process
     @property
     def t_processed(self):
@@ -99,9 +90,9 @@ class Machine(Node):
     def t_processed(self, t_processed):
         self._t_processed = t_processed
     @property
-    def job_id(self):
-        return self._job_id
-    @job_id.setter
-    def job_id(self,job_id):
-        self._job_id = job_id
+    def job(self):
+        return self._job
+    @job.setter
+    def job(self,job):
+        self._job = job
 

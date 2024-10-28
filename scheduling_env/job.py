@@ -47,31 +47,34 @@ class Job(Node):
     def match_machine(self,machine_id) -> bool:
         return machine_id in self._process_list[self._progress-1]
     
-    # 将job装载至machine
-    def load_to_machine(self,machine_id):
-        self._machine_id = machine_id
-        self._t_process = self.get_t_process(machine_id)
-        self._encode[-2] = machine_id
+        
+    
+    def load_to_machine(self,machine):
+        """将job转载至machine"""
+        self._machine = machine
+        self._t_process = self.get_t_process(machine.id)
         self._t_processed = 0
         self._status = 1
-    #加工一个时序
-    def run_a_time_step(self):
-        self._t_processed += 1
-        self._encode[-1] += 1
+
+    def unload_machine(self):
+        self._machine = None
+    
+    def run(self,min_run_timestep):
+        """
+            执行min_run_timestep 时序
+        """
+        self._t_processed += min_run_timestep
+
         if self._t_processed == self._t_process:        #当前工序加工完成
             self._t_processed = 0
             self._t_process = 0
-            self._machine_id = 0
             self._progress +=1
-            self._encode[-3] +=1
-            self._encode[-2] = 0
-            self._encode[-1] = 0
             if self._progress == self._process_num+1:    # 最后一道工序加工完成
                 self._progress = 0
-                self._encode[-3] = 0
                 self._status = 0
             else:
                 self._status = 2
+
     #获取job state 编码
     def get_job_state(self):
         ''''''
@@ -103,8 +106,8 @@ class Job(Node):
     def status(self):
         return self._status
     @property
-    def machine_id(self):
-        return self._machine_id
+    def machine(self):
+        return self._machine
     @property
     def t_process(self):
         return self._t_process
