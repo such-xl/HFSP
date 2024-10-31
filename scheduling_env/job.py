@@ -1,30 +1,30 @@
 from .utils import Node
 class Job(Node):
     code_len = 0
-    def __init__(self,id:int,process_num:int,process_list:list,encode:list,insert_time:int) -> None:
+    def __init__(self,id:int,process_num:int,process_list:list,insert_time:int) -> None:
         super().__init__(None)
         self._id = id #job序号,从1开始
         self._process_num = process_num         #job工序数
         self._process_list = process_list       #job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         self._progress = 1                       # 加工进度 代表第progess道工序待加工，0 代表加工完成
         self._status = 0                        # 0 已完成   1 加工中  2待加工
-        self._machine_id = 0                     # 正在加工该job的机器id，0表示目前没有被加工
+        self._machine_id = 0                    # 正在加工该job的机器id，0表示目前没有被加工
         self._t_process = 0                    # 当前工序需被加工的时间
         self._t_processed = 0                  # 当前工序已经被加工时间
-        self._encode = [self._id,1,0,0]+encode              #[job_id,带加工工序或正在加工工序，加工机器，加工时间,xxx...x] 编码
+        #self._state = self.get_job_encoding()  # [当前工序加工时间,当前工序相对延时，当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码] 
         self._insert_time = insert_time        #进入环境的时间
-        self._earliest_start_time = self._insert_time  #当前工序的实际最早开始时间
-        self._pest = self.get_pest()            #获取每道工序全局理论最早结束时间
-    def get_pest(self):
-        pest = [self._insert_time]
+        self._pest = self._insert_time          #当前工序的实际最早开始时间
+        self._pests = self.get_pests()            #获取每道工序全局理论最早开始时间
+    def get_pests(self):
+        pests = [self._insert_time]
         ct = self._insert_time
-        for p in self._process_list:
+        for p in self._process_list[:-1]:
             pt = 1e9
             for t in p.values():
                 pt = min(pt,t)
             ct += pt
-            pest.append(ct)
-        return pest
+            pests.append(ct)
+        return pests
     def show(self):
         print(len(self._encode))
         # for i,p in enumerate(self._process_list,start=1):
@@ -72,24 +72,22 @@ class Job(Node):
             if self._progress == self._process_num+1:    # 最后一道工序加工完成
                 self._progress = 0
                 self._status = 0
+                self._pest += self._t_process  # 更新实际当前工序的最早开始时间
             else:
                 self._status = 2
 
     #获取job state 编码
-    def get_job_state(self):
-        ''''''
-        job_state = [self._id,self._machine_id,self._t_processed,0]
-        for p in self._process_list[self._progress-1:self._progress-1+3]:
-            job_state.append(next(iter(p.values())))
-            for key in p.keys():
-                job_state.append(key)
-            job_state.append(0)
-        if len(job_state)<42:
-            job_state.extend([0]*(42-len(job_state)))
-        Job.code_len = max(Job.code_len,len(job_state))
+    def get_job_encoding(self,machine_nums,time_step):
+                         
+        """job state:[当前工序加工时间,当前工序相对延时，当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码]"""
+
+        job_state = [self._t_processed,time_step-self._pest,time_step-self._pests[self._progress-1]]
+        cp_dict = self._process_list[self._progress-1] #当前工序加工信息dict
+        p1 = [cp_dict.get(i+1,0) if self._status == 2 else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]
+        p2 = [self._process_list[self._progress].get(i+1,0) if self._progress != self.process_num else 0 for i in range(machine_nums) ]
+
+        job_state += p1+p2
         return job_state
-    def earliest_start_time_update(self,timestep):
-        self._earliest_start_time = timestep
     @property
     def id(self):
         return self._id
@@ -126,4 +124,7 @@ class Job(Node):
     @property
     def pest(self):
         return self._pest
+    @property
+    def pest(self):
+        return self._pests
     

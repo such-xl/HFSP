@@ -166,29 +166,32 @@ class Plotter:
 
 
 class StateNorm:
-    def __init__(self, job_dim, job_seq_len, machine_dim, machine_seq_len) -> None:
-        self.job_dim = job_dim
-        self.job_seq_len = job_seq_len
-        self.machine_dim = machine_dim
+    def __init__(self, machine_seq_len,machine_dim, job_seq_len,job_dim ) -> None:
         self.machine_seq_len = machine_seq_len
-
-    def job_seq_norm(self, job_state, ty):
-        # job_state:[seq_len,encoding_dim]
-        lens = self.job_seq_len
-        if ty == 0:  # machine的候选作业state
-            # lens -= 1
-            ...
-        mask = np.ones((self.job_seq_len,),dtype=bool)
-        mask[:len(job_state)] = False
-        padded_data = np.zeros((self.job_seq_len, self.job_dim))
-        if len(job_state)>0:
-            padded_data[:len(job_state), :] = job_state
-
-        
-        if ty == 0:# 最后一个seq 作为 on_job的注意力嵌入，所以mask要加上一个false
-            mask[-1] = False
-        # 当on_job为空时候，mask也是全True,然后通过attention layer后出现nan,所以要将mask全改为False
-        else:
-            if np.all(mask):
-                mask[:] = False
+        self.machine_dim = machine_dim
+        self.job_seq_len = job_seq_len
+        self.job_dim = job_dim
+    def machine_padding(self,data:list):
+        # dim-padding
+        data = [x + [0]*(self.machine_dim-len(x)) if len(x)<self.machine_dim else x[:self.machine_dim] for x in data]
+        #seq-padding
+        mask = np.ones((self.machine_seq_len,),dtype = bool)
+        mask[:len(data)] = False
+        padded_data = np.zeros((self.machine_seq_len,self.machine_dim))
+        if len(data)>0:
+            padded_data[:len(data),:] = data
+        if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
+            mask[0] = False
+        return padded_data,mask
+    def job_padding(self,data:list):
+        # dim-padding
+        data = [x + [0]*(self.job_dim-len(x)) if len(x)<self.job_dim else x[:self.job_dim] for x in data]
+        #seq-padding
+        mask = np.ones((self.job_seq_len,),dtype = bool)
+        mask[:len(data)] = False
+        padded_data = np.zeros((self.job_seq_len,self.job_dim))
+        if len(data)>0:
+            padded_data[:len(data),:] = data
+        if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
+            mask[0] = False
         return padded_data, mask

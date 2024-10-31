@@ -1,32 +1,10 @@
-import os
-import matplotlib.pyplot as plt
-import json
-import math
-
-with open('logs/record2iattn.json','r') as f:
-    record = json.load(f)
-data_path = os.path.dirname(os.path.abspath(__file__)) + '/scheduling_env/data/train_data/'
-jobs_name = os.listdir(data_path)
-for name in ['vla20.fjs']:
-    makespan = [x for x in record['makespan'][name]]
-
-    reward = [x for x in record['reward'][name]]
-    if name == 'vla20.fjs':
-        plt.title(name)
-        plt.plot(range(len(makespan)),makespan,c='blue')
-        print(makespan)
-        # plt.plot(range(len(reward[0:500])),[x for x in reward[0:500]],c='r')
-        plt.savefig('w.png')
-        
-
-
-    import numpy as np
-
-
-    # 使用NumPy的corrcoef函数计算相关系数矩阵
-    correlation_matrix = np.corrcoef(makespan, reward)
-
-    # 相关系数是矩阵对角线之外的元素
-    correlation = correlation_matrix[0, 1]
-
-    print(f"Pearson correlation coefficient: {name}", correlation)
+dic = {1:3,2:4,5:9}
+lenth = 10
+flag = True
+m_id = 2
+arr = [dic.get(i, 0) if not flag else dic.get(m_id) if i==m_id-1 else 0 for i in range(lenth)]
+a1 = [1,2,3]
+a2 = [4,5]
+a3 = [6,7,8,9,0]
+a1 += a2+a3
+print(a1)

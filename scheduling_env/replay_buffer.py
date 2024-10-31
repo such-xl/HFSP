@@ -1,77 +1,60 @@
-from collections import deque, namedtuple
+from collections import  namedtuple
 from typing import NamedTuple
-
 import numpy as np
 import torch
-#import numba as nb
 
-from .utils import StateNorm
-
-bufferEntity = namedtuple('Transition',
-                          ('spms', 'spjs', 'sojs', 'actions', 'rewards', 'nspms', 'nspjs', 'nsojs', 'dones',
-                           'mask_spj', 'mask_soj', 'mask_nspj', 'mask_nsoj'))
-
+bufferEntity = namedtuple('Transition',('machine_state','job_state','machine_mask','job_mask','action','next_machine_state','next_job_state','next_machine_mask','next_job_mask','reward','done'))
 
 class ReplayBuffer:
     def __init__(self, capacity, job_dim, job_seq_len, machine_dim, machine_seq_len):
-        # self.buffer = np.zeros((capacity, 8773))
-        self.state_norm = StateNorm(job_dim, job_seq_len, machine_dim, machine_seq_len)
-
         self.pos = 0
         self.buffer_size = capacity
-        self.full = False
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+        self.entity_size = (job_dim*job_seq_len+machine_dim*machine_seq_len+machine_seq_len+job_seq_len)*2 + 1+ 1+1
+
+        self.buffer = torch.zeros((capacity,self.entity_size)).to(self.device)
+        self.job_dim = job_dim
+        self.job_seq_len = job_seq_len
+        self.machine_dim = machine_dim
+        self.machine_seq_len = machine_seq_len
+        self.is_full = False
+        self.points = [0]
+    def add(self,data):
+        """
+        machine_state,job_state,machine_mask,job_mask,action,next_machine_state,next_job_state,next_machine_mask,next_job_mask,reward, done
+        """
+
+        self.buffer[self.pos] *= 0
+        p = 0
+        for x in data:
+            self.buffer[self.pos,p:p+x.size] += self.to_torch(x).ravel()
+            p += x.size
         
-        with torch.no_grad():
-            self.buffer = torch.zeros((capacity, 5173)).to(self.device)
-
-    def add(self, s_p_m, s_p_j, s_o_j, action, reward, n_s_p_m, n_s_p_j, n_s_o_j, done):
-        spj, mask_spj = self.state_norm.job_seq_norm(s_p_j, 0)
-        soj, mask_soj = self.state_norm.job_seq_norm(s_o_j, 1)
-        nspj, mask_nspj = self.state_norm.job_seq_norm(n_s_p_j, 0)
-        nsoj, mask_nsoj = self.state_norm.job_seq_norm(n_s_o_j, 1)
-        self.buffer[self.pos % self.buffer_size] *= 0
-        self.buffer[self.pos % self.buffer_size, 0: 5] += self.to_torch(s_p_m[0])
-        self.buffer[self.pos % self.buffer_size, 5: 1265] += self.to_torch(spj.ravel())
-        self.buffer[self.pos % self.buffer_size, 1265: 2525] += self.to_torch(soj.ravel())
-        self.buffer[self.pos % self.buffer_size, 2525: 2526] += self.to_torch(action)
-        self.buffer[self.pos % self.buffer_size, 2526: 2527] += self.to_torch(reward)
-        self.buffer[self.pos % self.buffer_size, 2527: 2532] += self.to_torch(n_s_p_m[0])
-        self.buffer[self.pos % self.buffer_size, 2532: 3792] += self.to_torch(nspj.ravel())
-        self.buffer[self.pos % self.buffer_size, 3792: 5052] += self.to_torch(nsoj.ravel())
-        self.buffer[self.pos % self.buffer_size, 5052: 5053] += self.to_torch((done))
-        self.buffer[self.pos % self.buffer_size, 5053: 5083] += self.to_torch(mask_spj)
-        self.buffer[self.pos % self.buffer_size, 5083: 5113] += self.to_torch(mask_soj)
-        self.buffer[self.pos % self.buffer_size, 5113: 5143] += self.to_torch(mask_nspj)
-        self.buffer[self.pos % self.buffer_size, 5143: 5173] += self.to_torch(mask_nsoj)
-        self.pos += 1
-        if self.pos == self.buffer_size:
-            self.full = True
-            self.pos = 0
-
+            if self.size()==0:
+                self.points.append(p)
+        self.pos = (self.pos+1) % self.buffer_size
+        if self.pos == self.buffer_size-1:
+            self.is_full = True
     def sample(self, batch_size):
         samples_idx = np.random.randint(0, self.size(), size=batch_size)
         ten = self.buffer[samples_idx, :]
-        # ten = self.to_torch(tmp)
-        return BufferEntity(ten[:, 0:5].reshape((batch_size,1,-1)),
-                            ten[:, 5: 1265].reshape((batch_size, 30, -1)),
-                            ten[:, 1265: 2525].reshape((batch_size, 30, -1)),
-                            ten[:, 2525: 2526],
-                            ten[:, 2526: 2527], 
-                            ten[:, 2527: 2532].reshape((batch_size,1,-1)),
-                            ten[:, 2532: 3792].reshape((batch_size, 30, -1)),
-                            ten[:, 3792: 5052].reshape((batch_size, 30, -1)),
-                            ten[:, 5052: 5053], 
-                            ten[:, 5053: 5083], 
-                            ten[:, 5083: 5113],
-                            ten[:, 5113: 5143], 
-                            ten[:, 5143: 5173],
+        p = self.points
+        return BufferEntity(ten[:,p[0]:p[1]].reshape((batch_size,self.machine_seq_len,-1)), # machine state
+                            ten[:, p[1]: p[2]].reshape((batch_size,self.job_seq_len, -1)),   # job state
+                            ten[:, p[2]: p[3]],                                            # machine mask
+                            ten[:, p[3]: p[4]],                                              # job mask
+                            ten[:, p[4]: p[5]].reshape((batch_size,1,-1)),                  # action
+                            ten[:, p[5]: p[6]].reshape((batch_size,self.machine_seq_len,-1)), # next_machine_state
+                            ten[:, p[6]: p[7]].reshape((batch_size,self.job_seq_len, -1)),   # next_job_state
+                            ten[:, p[7]: p[8]],                                             # next_machine_mask
+                            ten[:, p[8]: p[9]],                                              # next_job_mask
+                            ten[:, p[10]:p[11]],                                             # reward
+                            ten[:, p[11]:p[12]],                                            # done 
                             )
-        # return bufferEntity(*container)
-        # return tmp
 
     def size(self):
-        return self.buffer_size if self.full else self.pos
+        return self.buffer_size if self.is_full else self.pos
 
     def to_torch(self, array: np.ndarray, copy: bool = True) -> torch.Tensor:
         with torch.no_grad():
@@ -81,16 +64,14 @@ class ReplayBuffer:
 
 
 class BufferEntity(NamedTuple):
-    spms: torch.Tensor
-    spjs: torch.Tensor
-    sojs: torch.Tensor
+    machine_states: torch.Tensor
+    job_states:torch.Tensor
+    machine_masks:torch.Tensor
+    job_masks:torch.Tensor
     actions: torch.Tensor
-    rewards: torch.Tensor
-    nspms: torch.Tensor
-    nspjs: torch.Tensor
-    nsojs: torch.Tensor
+    next_machine_states: torch.Tensor
+    next_job_states: torch.Tensor
+    next_machine_masks: torch.Tensor
+    next_job_masks: torch.Tensor
+    rewrads: torch.Tensor
     dones: torch.Tensor
-    mask_spj: torch.Tensor
-    mask_soj: torch.Tensor
-    mask_nspj: torch.Tensor
-    mask_nsoj: torch.Tensor

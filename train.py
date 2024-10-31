@@ -60,7 +60,7 @@ class Train():
                 while len(state_deque)>1:
                     state = state_deque.popleft() #(machine_padded_state,job_padded_state,machine_mask,job_mask,action)
                     next_state = state_deque[0]
-                    replay_buffer.add(*(state+next_state[:-1]),reward,done)
+                    replay_buffer.add((*(state+next_state[:-1]),reward,True if done and len(state_deque)==1 else False))
                 
                 # machine_state,job_state,machine_mask,job_mask,action,reward,done    
                 if replay_buffer.size()>=minimal_size:
@@ -118,7 +118,7 @@ class Train():
 
 
 lr = 2e-6
-num_episodes = 1000
+num_episodes = 1
 job_input_dim  = 42 
 machine_input_dim = 5
 job_hidden_dim = 32
@@ -129,7 +129,7 @@ job_seq_len = 30
 machine_seq_len = 1
 gamma = 1
 epsilon_start = 1
-epsilon_end = 0.005
+epsilon_end = 1
 epsilon_decay = 1000
 tau = 0.005
 target_update = 1000

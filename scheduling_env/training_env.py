@@ -111,7 +111,9 @@ class TrainingEnv():
             idle_agent = idle_agent.next 
         self._time_step = 0
         return self._decision_agent
-    # 
+    def get_state(machine):
+        job_state = []
+        # todo 
     def step(self):
         # record = []
         # busy_agent = self._busy_agents.head

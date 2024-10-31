@@ -190,11 +190,6 @@ class Agent():
     def load_model(self, path):
         self.actor.load_state_dict(torch.load(path))
 
-    def check_for_nan_inf(self, tensor, name="tensor"):
-        if torch.isnan(tensor).any() or torch.isinf(tensor).any():
-            return True
-            raise ValueError(f"{name} contains NaN or Inf values")
-
 
 class Agenta():
     def __init__(self, job_input_dim, job_hidden_dim1, job_hidden_dim2, machine_input_dim, machine_hidden_dim,
