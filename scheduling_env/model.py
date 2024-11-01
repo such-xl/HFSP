@@ -50,14 +50,15 @@ class Actor(nn.Module):
         self.j_m_attn = nn.MultiheadAttention(machine_hidden_dim,num_heads)
 
         self.q_fc = nn.Linear(machine_hidden_dim,action_dim)
-    def forward(self, wait_machine,wait_job,on_job,wait_job_mask=None,on_job_mask=None, machine_mask=None):
-        # 对job state 初始化
+    def forward(self,machine_state,job_state,machine_mask,job_mask):
+        """
+            
+        """
+
         on_job = F.leaky_relu(self.job_fc1(on_job))
         on_job = F.leaky_relu(self.job_fc2(on_job))
-
         wait_job = F.leaky_relu(self.job_fc1(wait_job))
         wait_job = F.leaky_relu(self.job_fc2(wait_job))
-
 
         # 正在执行的job data 通过一个self-attention layer
         on_job = on_job.transpose(0,1)  # [job_seq_length, batch_size, job_hidden_dim]

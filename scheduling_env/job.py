@@ -88,7 +88,7 @@ class Job(Node):
                          
         """job state:[当前工序加工时间,当前工序相对延时，当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码]"""
 
-        job_state = [self._t_processed,self._prst-self._pest,self._prst-self._pests[self._progress-1]]
+        job_state = [self._t_processed,self._prst-self._pests[self._progress-1]]
 
         cp_dict = self._process_list[self._progress-1] #当前工序加工信息dict
         p1 = [cp_dict.get(i+1,0) if self._status == 2 else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]

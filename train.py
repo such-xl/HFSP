@@ -16,8 +16,8 @@ class Train():
 
     def train_model(self,reward_type,num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,
                     num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device):
-        env = TrainingEnv(action_dim=action_dim,reward_type=reward_type)
-        state_norm = StateNorm(job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
+        env = TrainingEnv(action_dim=action_dim,reward_type=reward_type,max_machine_num=machine_seq_len,max_job_num=job_seq_len)
+        state_norm = StateNorm(machine_seq_len,machine_input_dim,job_seq_len,job_input_dim)
         state_deque = deque(maxlen=machine_seq_len)
         train_data_path = self.data_path +'train_data/'
         jobs_name = sorted(os.listdir(train_data_path))
@@ -39,31 +39,29 @@ class Train():
             job_name = random.choice(jobs_name)
             job_name = 'vla20.fjs'
             job_path = train_data_path+job_name
-            decision_machine = env.reset(jobs_path=job_path)
+            decision_machines = env.reset(jobs_path=job_path)
             done = False
             while not done:
                 # 序贯决策
-                for machine in decision_machine:
-                    machine_state,job_state,actions = env.get_state(machine)
-                    print('1:',type(machine))
+                for machine in decision_machines:
+                    machine_state,job_state,actions = env.get_state(machine,decision_machines)
                     # state预处理
-                    # machine_padded_state,machine_mask = state_norm.machine_padding(machine_state)
-                    job_padded_state,job_mask = state_norm.machine_padding(job_state)
+                    machine_padded_state,machine_mask = state_norm.machine_padding(machine_state)
+                    job_padded_state,job_mask = state_norm.job_padding(job_state)
                     # 采样一个动作
-                    action = agent.take_action(machine_state,job_state)
+                    action = agent.take_action(machine_padded_state,machine_mask,job_padded_state,job_mask,actions,step_done)
                     # 提交动作
                     env.commit_action(machine,actions,action) 
-                    #state_deque.append((machine_padded_state,job_padded_state,machine_mask,job_mask,action))
+                    state_deque.append((machine_padded_state,job_padded_state,machine_mask,job_mask,action))
                 # 执行
-                decision_machine,reward,done = env.step() # 获取的是平分的奖励
+                decision_machines,reward,done = env.step() # 获取的是平分的奖励
 
                 #将state存入buffer
-                while False and len(state_deque)>1:
+                while len(state_deque)>1:
                     state = state_deque.popleft() #(machine_padded_state,job_padded_state,machine_mask,job_mask,action)
                     next_state = state_deque[0]
                     replay_buffer.add((*(state+next_state[:-1]),reward,True if done and len(state_deque)==1 else False))
-                
-                # machine_state,job_state,machine_mask,job_mask,action,reward,done    
+                # machine_state,job_state,machine_mask,job_mask,action,reward,done
                 if replay_buffer.size()>=minimal_size:
                     transition = replay_buffer.sample(batch_size=batch_size)
                     dnt,tt=agent.update(transition)
@@ -88,7 +86,7 @@ class Train():
         all_data_path = self.data_path+'all_data/'
 
         jobs_name = os.listdir(all_data_path)
-        jobs_name = ['vla01.fjs']
+        jobs_name = ['vla20.fjs']
         # record_makespan = {}
         # record_reward = {}
         jobs_name = sorted(jobs_name)
@@ -107,7 +105,7 @@ class Train():
                     # 提交动作
                     env.commit_action(agent,actions,action)
                 # 执行
-                idle_agents,done = env.step()    
+                idle_agents,r,done = env.step()    
                 # plot.gant_chat(env.draw_data)
             print(job_name,': ', env.time_step,f'rward:{1}')
             # record_makespan[job_name] = env.time_step
@@ -122,11 +120,11 @@ class Train():
 
 lr = 2e-6
 num_episodes = 1
-job_input_dim  = 42 
-machine_input_dim = 5
+job_input_dim  = 32
+machine_input_dim = 4
 job_hidden_dim = 32
 machine_hidden_dim = 16
-action_dim = 30
+action_dim = 32
 num_heads = 2
 job_seq_len = 30
 machine_seq_len = 15
@@ -138,11 +136,11 @@ tau = 0.005
 target_update = 1000
 buffer_size = 10_000
 
-minimal_size = 1000
-batch_size = 512
+minimal_size = 100
+batch_size = 2
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 trainer = Train()
 reward_type = [0,1,2]
 
-# trainer.train_model(reward_type[2],num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device)
-trainer.basic_scheduling(ty=0,reward_type=reward_type[2],machine_seq_len=machine_seq_len,job_seq_len=job_seq_len)
+trainer.train_model(reward_type[2],num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device)
+#trainer.basic_scheduling(ty=0,reward_type=reward_type[2],machine_seq_len=machine_seq_len,job_seq_len=job_seq_len)

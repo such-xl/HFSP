@@ -14,16 +14,14 @@ class Machine(Node):
         self._job_process = 0          #正在加工的工序
         self._t_process = 0            #当前加工的工序需要的加工时间
         self._t_processed = 0          #目前已经加工当前工序的时间
-        self._encode = [self._id,self._status,0,0,0] #id,status,加工作业id,第几道工序,加工时间
-        self.bin_code = self.get_bin_code()
+        self._bin_code = self.get_bin_code()
     def get_bin_code(self):
         binary_str = bin(self._id)[2:]
-        binary_str = binary_str.zfill(5)
         binary_list = [int(digit) for digit in binary_str]
         return binary_list
 
-    def get_machine_state(self):
-        return  self._encode
+    def get_state_encoding(self,lenth):
+        return [0 for i in range(lenth-len(self._bin_code))] + self._bin_code
     def show(self):
         if self._status == 2:
             print(f'已经加工作业{self._job_id}的第{self._job_process}工序{self._t_processed}s,剩余{self._t_process-self._t_processed}')

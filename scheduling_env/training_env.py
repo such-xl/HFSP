@@ -120,8 +120,16 @@ class TrainingEnv():
             idle_agent = idle_agent.next 
         self._time_step = 0
         return self._decision_agent
-    def get_state(self,machine):
+    def get_state(self,machine,decision_machines):
         actions = self.get_agent_actions(machine)
+        # machine state:
+        machine_state = [machine.get_state_encoding(4)] + [ x.get_state_encoding(4)  for x in decision_machines if x is not machine]
+        idle_machine = self._idle_agents.head
+        while idle_machine:
+            if idle_machine not in  decision_machines:
+                machine_state.append(idle_machine.get_state_encoding(4)) 
+            idle_machine = idle_machine.next
+        # job state:
         job_state = [x.get_state_encoding(self._max_machine_num) for x in actions]
         in_progress_job,pending_job =  self._in_progress_jobs.head,self._pending_jobs.head
         while pending_job:
@@ -131,12 +139,7 @@ class TrainingEnv():
         while in_progress_job:
             job_state.append(in_progress_job.get_state_encoding(self._max_machine_num))
             in_progress_job = in_progress_job.next
-        print("====")
-        print(self._pending_jobs.length,self._in_progress_jobs.length,self._time_step)
-        for x in job_state:
-            print(x)
-        print("====")
-        return [],job_state,actions 
+        return machine_state,job_state,actions 
          
     def step(self):
         # record = []
@@ -146,7 +149,7 @@ class TrainingEnv():
         #     busy_agent = busy_agent.next
         # print(record)
         next_idle_agents,done = self.run()
-        return  next_idle_agents,done
+        return  next_idle_agents,0,done
     
     def reward_func_0(self,action,act_jobs,machine_id):
         """

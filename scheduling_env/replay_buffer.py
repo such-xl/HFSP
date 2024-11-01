@@ -24,13 +24,12 @@ class ReplayBuffer:
         """
         machine_state,job_state,machine_mask,job_mask,action,next_machine_state,next_job_state,next_machine_mask,next_job_mask,reward, done
         """
-
         self.buffer[self.pos] *= 0
         p = 0
         for x in data:
-            self.buffer[self.pos,p:p+x.size] += self.to_torch(x).ravel()
+            x = np.array(x).ravel()
+            self.buffer[self.pos,p:p+x.size] += self.to_torch(x)
             p += x.size
-        
             if self.size()==0:
                 self.points.append(p)
         self.pos = (self.pos+1) % self.buffer_size
@@ -49,8 +48,8 @@ class ReplayBuffer:
                             ten[:, p[6]: p[7]].reshape((batch_size,self.job_seq_len, -1)),   # next_job_state
                             ten[:, p[7]: p[8]],                                             # next_machine_mask
                             ten[:, p[8]: p[9]],                                              # next_job_mask
-                            ten[:, p[10]:p[11]],                                             # reward
-                            ten[:, p[11]:p[12]],                                            # done 
+                            ten[:, p[9]:p[10]],                                             # reward
+                            ten[:, p[10]:p[11]],                                            # done 
                             )
 
     def size(self):
