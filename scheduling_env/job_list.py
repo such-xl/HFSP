@@ -30,7 +30,7 @@ class JobList(DoublyLinkList):
                     procs.append(proc)
                     r += 1
                     i  += (1+line[i]*2)
-                self.append(Job(job_id=job_id,process_num=r-1,process_list=procs,insert_time=0))
+                self.append(Job(id=job_id,process_num=r-1,process_list=procs,insert_time=0))
         return machine_num
                 
 

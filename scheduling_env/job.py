@@ -7,13 +7,14 @@ class Job(Node):
         self._process_num = process_num         #job工序数
         self._process_list = process_list       #job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         self._progress = 1                       # 加工进度 代表第progess道工序待加工，0 代表加工完成
-        self._status = 0                        # 0 已完成   1 加工中  2待加工
-        self._machine_id = 0                    # 正在加工该job的机器id，0表示目前没有被加工
+        self._status = 2                        # 0 已完成   1 加工中  2待加工
+        self._machine = None                    # 正在加工该job的机器id，0表示目前没有被加工
         self._t_process = 0                    # 当前工序需被加工的时间
         self._t_processed = 0                  # 当前工序已经被加工时间
         #self._state = self.get_job_encoding()  # [当前工序加工时间,当前工序相对延时，当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码] 
         self._insert_time = insert_time        #进入环境的时间
         self._pest = self._insert_time          #当前工序的实际最早开始时间
+        self._prst = 0                          #当前工序时间开始时间
         self._pests = self.get_pests()            #获取每道工序全局理论最早开始时间
     def get_pests(self):
         pests = [self._insert_time]
@@ -49,12 +50,13 @@ class Job(Node):
     
         
     
-    def load_to_machine(self,machine):
+    def load_to_machine(self,machine,time_step):
         """将job转载至machine"""
         self._machine = machine
         self._t_process = self.get_t_process(machine.id)
         self._t_processed = 0
         self._status = 1
+        self._prst = time_step
 
     def unload_machine(self):
         self._machine = None
@@ -72,20 +74,25 @@ class Job(Node):
             if self._progress == self._process_num+1:    # 最后一道工序加工完成
                 self._progress = 0
                 self._status = 0
-                self._pest += self._t_process  # 更新实际当前工序的最早开始时间
+                #self._pest += self._t_process  # 更新实际当前工序的最早开始时间
             else:
                 self._status = 2
+    def update_pest(self,time_step):
+        self._pest = time_step
+    
+    def update_prst(self,time_step):
+        self._prst = time_step
 
     #获取job state 编码
-    def get_job_encoding(self,machine_nums,time_step):
+    def get_state_encoding(self,machine_nums):
                          
         """job state:[当前工序加工时间,当前工序相对延时，当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码]"""
 
-        job_state = [self._t_processed,time_step-self._pest,time_step-self._pests[self._progress-1]]
+        job_state = [self._t_processed,self._prst-self._pest,self._prst-self._pests[self._progress-1]]
+
         cp_dict = self._process_list[self._progress-1] #当前工序加工信息dict
         p1 = [cp_dict.get(i+1,0) if self._status == 2 else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]
-        p2 = [self._process_list[self._progress].get(i+1,0) if self._progress != self.process_num else 0 for i in range(machine_nums) ]
-
+        p2 = [self._process_list[self._progress].get(i+1,0) if self._progress < self._process_num else 0 for i in range(machine_nums)]
         job_state += p1+p2
         return job_state
     @property

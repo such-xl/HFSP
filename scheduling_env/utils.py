@@ -141,7 +141,6 @@ class Plotter:
     '''
 
     def gant_chat(self, data):
-        print(data)
         self.fig, self.ax = plt.subplots()
         machine_num = 0
         for i, info in enumerate(data, start=1):
@@ -157,6 +156,7 @@ class Plotter:
         self.ax.grid(True)
         plt.legend(handles=patch, loc='best')
         plt.tight_layout()
+        plt.savefig('kk.png')
         plt.show()
 
     def close(self) -> None:

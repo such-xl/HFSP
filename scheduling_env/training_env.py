@@ -9,10 +9,12 @@ from .machine_list import MachineList
 class TrainingEnv():
     # 初始化环境
     count_action = 1000
-    def __init__(self,action_dim,reward_type = 0) -> None:
+    def __init__(self,action_dim,reward_type,max_machine_num,max_job_num) -> None:
         self._action_space = None   #(1,30)
         self._action_dim = action_dim 
         self._agents_num = 0        #总agent数
+        self._max_machine_num = max_machine_num
+        self._max_job_num = max_job_num
         self._jobs_num  = 0         #总作业数
         self._completed_jobs = JobList()
         self._pending_jobs = JobList()
@@ -28,7 +30,7 @@ class TrainingEnv():
         self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
         self._jobs_num = self._pending_jobs.length
         self._idle_agents = MachineList(self._agents_num)
-        self._draw_data = [[] for i in range(self._jobs_num)]
+        # self._draw_data = [[] for i in range(self._jobs_num)]
 
     def get_agent_actions(self,machine):
         act_jobs = []                   
@@ -52,8 +54,8 @@ class TrainingEnv():
             return ...
         job = actions[action]
         agent.load_job(job)
-        job.load_to_machine(agent)
-
+        job.load_to_machine(agent,self._time_step)
+        # self._draw_data[job.id-1].append([agent.id,self._time_step,self.time_step])
         self._idle_agents.disengage_node(agent)
         self._busy_agents.append(agent)
         self._pending_jobs.disengage_node(job)
@@ -75,15 +77,22 @@ class TrainingEnv():
             if busy_agent.status == 1: #工序加工结束
                 self._in_progress_jobs.disengage_node(busy_agent.job) # job的工序加工完成，使该job脱离in_progress_job链表
                 self._pending_jobs.append(busy_agent.job) if busy_agent.job.status==2 else self._completed_jobs.append(busy_agent.job) # 若jobs未完成，加入等待加工链表，若加工完成，加入完成链表
+                busy_agent.job.update_pest(self.time_step+min_run_timestep) #更新job 当前工序的时间最早开始时间
+                # self._draw_data[busy_agent.job.id-1][-1][-1] = self._time_step+min_run_timestep
                 busy_agent.unload_job()
                 self._busy_agents.disengage_node(busy_agent)
                 self._idle_agents.append(busy_agent)
+
             
             elif busy_agent.status == 0: #机器故障,暂时不实现
                 self._busy_agents.disengage_node(busy_agent)
                 self._faulty_agents.append(busy_agent)
             busy_agent = next_busy_agent
-        self._time_step += min_run_timestep 
+        self._time_step += min_run_timestep
+        pending_job = self._pending_jobs.head
+        while pending_job:
+            pending_job.update_prst(self.time_step)
+            pending_job = pending_job.next
         done = False
         if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
             done = True
@@ -102,7 +111,7 @@ class TrainingEnv():
         self._draw_data = None
         self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
         self._completed_jobs = JobList()
-        #返回 初始化状态，(第一个idle machine(s_p_m),其可选job(s_p_j)正在执行作业job(s_o_j)   
+        
         self._decision_agent = []
         idle_agent = self._idle_agents.head
         while idle_agent:
@@ -111,9 +120,24 @@ class TrainingEnv():
             idle_agent = idle_agent.next 
         self._time_step = 0
         return self._decision_agent
-    def get_state(machine):
-        job_state = []
-        # todo 
+    def get_state(self,machine):
+        actions = self.get_agent_actions(machine)
+        job_state = [x.get_state_encoding(self._max_machine_num) for x in actions]
+        in_progress_job,pending_job =  self._in_progress_jobs.head,self._pending_jobs.head
+        while pending_job:
+            if pending_job not in actions:
+                job_state.append(pending_job.get_state_encoding(self._max_machine_num))
+            pending_job = pending_job.next
+        while in_progress_job:
+            job_state.append(in_progress_job.get_state_encoding(self._max_machine_num))
+            in_progress_job = in_progress_job.next
+        print("====")
+        print(self._pending_jobs.length,self._in_progress_jobs.length,self._time_step)
+        for x in job_state:
+            print(x)
+        print("====")
+        return [],job_state,actions 
+         
     def step(self):
         # record = []
         # busy_agent = self._busy_agents.head
