@@ -17,7 +17,7 @@ class Train():
     def train_model(self,reward_type,num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,
                     num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,device):
         env = TrainingEnv(action_dim=action_dim,reward_type=reward_type,max_machine_num=machine_seq_len,max_job_num=job_seq_len)
-        state_norm = StateNorm(machine_seq_len,machine_input_dim,job_seq_len,job_input_dim)
+        state_norm = StateNorm(machine_seq_len,machine_input_dim,job_seq_len,job_input_dim,action_dim)
         state_deque = deque(maxlen=machine_seq_len)
         train_data_path = self.data_path +'train_data/'
         jobs_name = sorted(os.listdir(train_data_path))
@@ -27,7 +27,7 @@ class Train():
             record_reward[name] = []
             record_makespan[name] = []
 
-        replay_buffer = ReplayBuffer(buffer_size,job_input_dim,job_seq_len,machine_input_dim,machine_seq_len)
+        replay_buffer = ReplayBuffer(buffer_size,job_input_dim,job_seq_len,machine_input_dim,machine_seq_len,action_dim)
         agent = Agent(job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,num_heads,job_seq_len,machine_seq_len,epsilon_start,epsilon_end,epsilon_decay,tau,lr,gamma,target_update,device)
         step_done  = 0
         for i in range(num_episodes): #episodes
@@ -37,7 +37,6 @@ class Train():
             G = 0
             #Generate an FJSS instance from teh emulating environment
             job_name = random.choice(jobs_name)
-            job_name = 'vla20.fjs'
             job_path = train_data_path+job_name
             decision_machines = env.reset(jobs_path=job_path)
             done = False
@@ -47,21 +46,22 @@ class Train():
                     machine_state,job_state,actions = env.get_state(machine,decision_machines)
                     # state预处理
                     machine_padded_state,machine_mask = state_norm.machine_padding(machine_state)
-                    job_padded_state,job_mask = state_norm.job_padding(job_state)
+
+                    job_padded_state,job_mask,action_mask = state_norm.job_padding(job_state,len(actions))
                     # 采样一个动作
-                    action = agent.take_action(machine_padded_state,machine_mask,job_padded_state,job_mask,actions,step_done)
+                    action = agent.take_action(machine_padded_state,machine_mask,job_padded_state,job_mask,actions,action_mask,step_done)
                     # 提交动作
                     env.commit_action(machine,actions,action) 
-                    state_deque.append((machine_padded_state,job_padded_state,machine_mask,job_mask,action))
+                    state_deque.append((machine_padded_state,job_padded_state,machine_mask,job_mask,action_mask,action))
                 # 执行
                 decision_machines,reward,done = env.step() # 获取的是平分的奖励
+                step_done += 1
 
                 #将state存入buffer
                 while len(state_deque)>1:
-                    state = state_deque.popleft() #(machine_padded_state,job_padded_state,machine_mask,job_mask,action)
+                    state = state_deque.popleft() #(machine_padded_state,job_padded_state,machine_mask,job_mask,action_mask,action)
                     next_state = state_deque[0]
                     replay_buffer.add((*(state+next_state[:-1]),reward,True if done and len(state_deque)==1 else False))
-                # machine_state,job_state,machine_mask,job_mask,action,reward,done
                 if replay_buffer.size()>=minimal_size:
                     transition = replay_buffer.sample(batch_size=batch_size)
                     dnt,tt=agent.update(transition)
@@ -119,25 +119,25 @@ class Train():
 
 
 lr = 2e-6
-num_episodes = 1
+num_episodes = 100
 job_input_dim  = 32
 machine_input_dim = 4
 job_hidden_dim = 32
-machine_hidden_dim = 16
+machine_hidden_dim = 32
 action_dim = 32
-num_heads = 2
+num_heads = 4
 job_seq_len = 30
 machine_seq_len = 15
 gamma = 1
 epsilon_start = 1
-epsilon_end = 1
+epsilon_end = 0.005
 epsilon_decay = 1000
 tau = 0.005
 target_update = 1000
 buffer_size = 10_000
 
-minimal_size = 100
-batch_size = 2
+minimal_size = 1000
+batch_size = 512
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 trainer = Train()
 reward_type = [0,1,2]

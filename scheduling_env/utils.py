@@ -166,11 +166,12 @@ class Plotter:
 
 
 class StateNorm:
-    def __init__(self, machine_seq_len,machine_dim, job_seq_len,job_dim ) -> None:
+    def __init__(self, machine_seq_len,machine_dim, job_seq_len,job_dim, action_dim ) -> None:
         self.machine_seq_len = machine_seq_len
         self.machine_dim = machine_dim
         self.job_seq_len = job_seq_len
         self.job_dim = job_dim
+        self.action_dim = action_dim
     def machine_padding(self,data:list):
         # dim-padding
         data = [x + [0]*(self.machine_dim-len(x)) if len(x)<self.machine_dim else x[:self.machine_dim] for x in data]
@@ -183,7 +184,7 @@ class StateNorm:
         if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
             mask[0] = False
         return padded_data,mask
-    def job_padding(self,data:list):
+    def job_padding(self,data:list,actions_len:int):
         # dim-padding
         data = [x + [0]*(self.job_dim-len(x)) if len(x)<self.job_dim else x[:self.job_dim] for x in data]
         #seq-padding
@@ -194,4 +195,6 @@ class StateNorm:
             padded_data[:len(data),:] = data
         if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
             mask[0] = False
-        return padded_data, mask
+        # action_mask 1代表动作有效，0代表动作无效
+        action_mask = [1 if i<actions_len or i==self.action_dim-1 else 0 for i in range(self.action_dim)]
+        return padded_data, mask,np.array(action_mask)

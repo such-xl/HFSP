@@ -7,20 +7,7 @@ from .model import Actor, Actora
 from .utils import StateNorm
 
 
-class BufferEntity(NamedTuple):
-    spms: torch.Tensor
-    spjs: torch.Tensor
-    sojs: torch.Tensor
-    actions: torch.Tensor
-    rewards: torch.Tensor
-    nspms: torch.Tensor
-    nspjs: torch.Tensor
-    nsojs: torch.Tensor
-    dones: torch.Tensor
-    mask_spj: torch.Tensor
-    mask_soj: torch.Tensor
-    mask_nspj: torch.Tensor
-    mask_nsoj: torch.Tensor
+
 
 class Agent():
     def __init__(self, job_input_dim, job_hidden_dim, machine_input_dim, machine_hidden_dim,
@@ -43,34 +30,30 @@ class Agent():
         self.gamma = gamma
         self.target_update = target_update
         self.device = device
-        self.state_norm = StateNorm(job_input_dim, job_seq_len, machine_input_dim, machine_seq_len)
+        self.state_norm = StateNorm(job_input_dim, job_seq_len, machine_input_dim, machine_seq_len,action_dim)
         self.count = 0
         self.loss = 0
 
-    def take_action(self,machine_state,machine_mask,job_state,job_mask,act_jobs, step_done):
-
+    def take_action(self,machine_state,machine_mask,job_state,job_mask,act_jobs, action_mask,step_done,):
         eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(
             -1. * step_done / self.epsilon_decay)
         if np.random.random() < eps_threshold:
             action = np.random.randint(0, len(act_jobs) + 1)  # 最后一个动作代表空闲
         else:
-            s_p_m = torch.tensor(s_p_m, dtype=torch.float).to(self.device)
-            s_p_j, mask_spj = self.state_norm.job_seq_norm(s_p_j, 0)
-            s_o_j, mask_soj = self.state_norm.job_seq_norm(s_o_j, 1)
+            with torch.no_grad():
+                machine_state = torch.as_tensor(machine_state, dtype=torch.float).to(self.device).unsqueeze(0)
+                job_state = torch.as_tensor(job_state, dtype=torch.float).to(self.device).unsqueeze(0)
+                machine_mask = torch.as_tensor(machine_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
+                job_mask = torch.as_tensor(job_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
 
-            s_p_j = torch.tensor(s_p_j, dtype=torch.float).to(self.device)
-            s_o_j = torch.tensor(s_o_j, dtype=torch.float).to(self.device)
-            mask_spj = torch.tensor(mask_spj, dtype=torch.bool).to(self.device)
-            mask_soj = torch.tensor(mask_soj, dtype=torch.bool).to(self.device)
-            q_value = self.actor(s_p_m.unsqueeze(0), s_p_j.unsqueeze(0), s_o_j.unsqueeze(0), mask_spj.unsqueeze(0), mask_soj.unsqueeze(0)).view(-1)
-            # way 1:无效值屏蔽
-            action_value = torch.cat((q_value[:len(act_jobs)], q_value[-1].unsqueeze(0)))
-            max_value, max_index = torch.max(action_value, dim=0)
-            action = max_index
-            '''
-            # way 2动作取余映射到合理范围
-            _, action = torch.max(q_value, dim=0)
-            '''
+                q_value = self.actor(machine_state,job_state,machine_mask,job_mask).squeeze(1)
+
+                # way 1:无效值屏蔽
+                action_mask = torch.as_tensor(action_mask,dtype=torch.float).to(self.device).unsqueeze(0)
+                mask_q_value = q_value * action_mask
+            
+                _,action = torch.max(mask_q_value,dim=1)
+                action = action.cpu().item()
         return action
 
     def update(self, transition):
@@ -79,43 +62,43 @@ class Agent():
         job_states = transition.job_states
         machine_masks = transition.machine_masks.to(torch.bool)
         job_masks = transition.job_masks.to(torch.bool)
+        action_masks = transition.action_masks
         actions = transition.actions.to(torch.int64)
         next_machine_states = transition.next_machine_states
         next_job_states = transition.next_job_states
         next_machine_masks = transition.next_machine_masks.to(torch.bool)
         next_job_masks = transition.next_job_masks.to(torch.bool)
+        next_action_masks = transition.next_action_masks
         rewards = transition.rewards
         dones = transition.dones
+        '''
+        print('machine_states:',machine_states.shape)
+        print('job_states:',job_states.shape)
+        print('machine_masks:',machine_masks.shape)
+        print('job_masks:',job_masks.shape)
+        print('action_masks:',action_masks.shape)
+        print('actions:',actions.shape)
+        print('next_machine_states:',next_machine_states.shape)
+        print('next_job_states:',next_job_states.shape)
+        print('next_machine_masks:',next_machine_masks.shape)
+        print('next_job_masks:',next_job_masks.shape)
+        print('next_action_masks:',next_action_masks.shape)
+        print('rewards:',rewards.shape)
+        print('dones:',dones.shape)
+        '''
 
         gt = time.time()-gst
         tst = time.time()
         q_values = self.actor(machine_states,job_states,machine_masks,job_masks).squeeze(1)  # [batch_size,1,action_dim]->[batch_size,action_dim]
-
+        
         q_values = q_values.gather(1, actions)  # [batch_size,1]
-
         with torch.no_grad():
-
-            next_q_values = self.target_actor(next_machine_states,next_job_states,next_machine_masks,next_job_masks).squeeze(1)  # [64,1,30] ->[batch_size,action_dim]
-            min_value = torch.finfo(next_q_values.dtype).min
-            min_value = torch.tensor(min_value).to(self.device)
-            mask_next_q_values = torch.where(mask_nspj,min_value.expand_as(next_q_values),next_q_values).to(self.device)
+            next_q_values = self.target_actor(next_machine_states,next_job_states,next_machine_masks,next_job_masks).squeeze(1)  # [batch_size,1,action_dim] ->[batch_size,action_dim]
+            mask_next_q_values = next_q_values * next_action_masks
             max_nqv,_ = torch.max(mask_next_q_values,dim=1)
+
             max_nqv = max_nqv.view(-1,1)
-            ''' 
-            max_nqv, _ = torch.max(next_q_values, dim=1)
-            max_nqv = max_nqv.view(-1, 1)
-            '''
             q_targets = rewards + self.gamma * max_nqv * (1 - dones)
-            '''
-            print('max_nqv:',max_nqv.shape)
-            print(max_nqv)
-            print('rewards:',rewards.shape)
-            print(rewards)
-            print('dones:',dones.shape)
-            print(dones)
-            print('q_targets:',q_targets.shape)
-            print(q_targets)
-            '''
         dqn_loss = F.smooth_l1_loss(q_values, q_targets)
         self.loss += dqn_loss
         self.optimizer.zero_grad()

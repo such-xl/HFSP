@@ -6,23 +6,26 @@ import torch
 bufferEntity = namedtuple('Transition',('machine_state','job_state','machine_mask','job_mask','action','next_machine_state','next_job_state','next_machine_mask','next_job_mask','reward','done'))
 
 class ReplayBuffer:
-    def __init__(self, capacity, job_dim, job_seq_len, machine_dim, machine_seq_len):
+    def __init__(self, capacity, job_dim, job_seq_len, machine_dim, machine_seq_len,action_dim):
         self.pos = 0
         self.buffer_size = capacity
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-        self.entity_size = (job_dim*job_seq_len+machine_dim*machine_seq_len+machine_seq_len+job_seq_len)*2 + 1+ 1+1
+        self.entity_size = (job_dim*job_seq_len+machine_dim*machine_seq_len+machine_seq_len+job_seq_len+action_dim)*2 + 1+ 1+1
 
         self.buffer = torch.zeros((capacity,self.entity_size)).to(self.device)
         self.job_dim = job_dim
         self.job_seq_len = job_seq_len
         self.machine_dim = machine_dim
         self.machine_seq_len = machine_seq_len
+        self.action_dim = action_dim
         self.is_full = False
         self.points = [0]
     def add(self,data):
         """
-        machine_state,job_state,machine_mask,job_mask,action,next_machine_state,next_job_state,next_machine_mask,next_job_mask,reward, done
+        machine_padded_state,job_padded_state,machine_mask,job_mask,action_mask,action
+        next_machine_padded_state,next_job_padded_state,next_machine_mask,next_job_mask,next_action_mask
+        reward,done
         """
         self.buffer[self.pos] *= 0
         p = 0
@@ -43,13 +46,15 @@ class ReplayBuffer:
                             ten[:, p[1]: p[2]].reshape((batch_size,self.job_seq_len, -1)),   # job state
                             ten[:, p[2]: p[3]],                                            # machine mask
                             ten[:, p[3]: p[4]],                                              # job mask
-                            ten[:, p[4]: p[5]].reshape((batch_size,1,-1)),                  # action
-                            ten[:, p[5]: p[6]].reshape((batch_size,self.machine_seq_len,-1)), # next_machine_state
-                            ten[:, p[6]: p[7]].reshape((batch_size,self.job_seq_len, -1)),   # next_job_state
-                            ten[:, p[7]: p[8]],                                             # next_machine_mask
-                            ten[:, p[8]: p[9]],                                              # next_job_mask
-                            ten[:, p[9]:p[10]],                                             # reward
-                            ten[:, p[10]:p[11]],                                            # done 
+                            ten[:, p[4]: p[5]],                                      # action_mask
+                            ten[:, p[5]: p[6]].reshape((batch_size,-1)),                   # action
+                            ten[:, p[6]: p[7]].reshape((batch_size,self.machine_seq_len,-1)), # next_machine_state
+                            ten[:, p[7]: p[8]].reshape((batch_size,self.job_seq_len, -1)),   # next_job_state
+                            ten[:, p[8]: p[9]],                                             # next_machine_mask
+                            ten[:, p[9]: p[10]],                                              # next_job_mask
+                            ten[:, p[10]: p[11]],                                             # next_action_mask
+                            ten[:, p[11]:p[12]],                                             # reward
+                            ten[:, p[12]:p[13]],                                            # done 
                             )
 
     def size(self):
@@ -67,10 +72,12 @@ class BufferEntity(NamedTuple):
     job_states:torch.Tensor
     machine_masks:torch.Tensor
     job_masks:torch.Tensor
+    action_masks: torch.Tensor
     actions: torch.Tensor
     next_machine_states: torch.Tensor
     next_job_states: torch.Tensor
     next_machine_masks: torch.Tensor
     next_job_masks: torch.Tensor
-    rewrads: torch.Tensor
+    next_action_masks: torch.Tensor
+    rewards: torch.Tensor
     dones: torch.Tensor
