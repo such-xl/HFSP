@@ -137,6 +137,7 @@ class Train():
         print(len(jobs_name))
 
 
+
 lr = 1e-6
 num_episodes = 3000
 job_input_dim  = 32
