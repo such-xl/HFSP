@@ -15,6 +15,7 @@ class Machine(Node):
         self._t_process = 0            #当前加工的工序需要的加工时间
         self._t_processed = 0          #目前已经加工当前工序的时间
         self._bin_code = self.get_bin_code()
+        self._idle_time = 0
     def get_bin_code(self):
         binary_str = bin(self._id)[2:]
         binary_list = [int(digit) for digit in binary_str]
@@ -34,13 +35,14 @@ class Machine(Node):
         self._status = 2
         self._t_processed = 0
         self._t_process = self._job.get_t_process(self._id)
-
+        self._idle_time = 0
     def unload_job(self):
         """卸载作业"""
         self._job.unload_machine()
         self._t_process = 0
         self._t_processed = 0
         self._job = None
+        self._idle_time = 0
     def run(self,min_run_timestep):
         """
             运行 'min_run_timestep' 时序，让环境产生空闲机器
@@ -51,6 +53,11 @@ class Machine(Node):
             self._t_processed = 0
             self._t_process = 0
             self._status = 1                     #将该机器的状态设置为空闲
+            self._idle_time = 0
+    def get_idle_time(self):
+        return self._idle_time
+    def set_idle_time(self,idle_time):
+        self._idle_time += idle_time
     @property
     def id(self):
         return self._id

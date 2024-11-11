@@ -14,7 +14,7 @@ class Job(Node):
         #self._state = self.get_job_encoding()  # [当前工序加工时间,当前工序相对延时，当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码] 
         self._insert_time = insert_time        #进入环境的时间
         self._pest = self._insert_time          #当前工序的实际最早开始时间
-        self._prst = 0                          #当前工序时间开始时间
+        self._prst = 0                          #当前工序实际开始时间
         self._pests = self.get_pests()            #获取每道工序全局理论最早开始时间
     def get_pests(self):
         pests = [self._insert_time]
@@ -47,7 +47,7 @@ class Job(Node):
     # 判断当前工序是否可被agent_i执行
     def match_machine(self,machine_id) -> bool:
         return machine_id in self._process_list[self._progress-1]
-    
+
         
     
     def load_to_machine(self,machine,time_step):
@@ -82,13 +82,26 @@ class Job(Node):
     
     def update_prst(self,time_step):
         self._prst = time_step
+    def get_latency(self):
+       return self._prst-self._pests[self._progress-1]
+    def get_relative_delay(self):
+        return self._prst-self._pest
+    def get_delay_ratio(self):
+        return (self._prst-self._pest)/(self._prst-self._pest+self._t_process)
+
+    def current_progress_need_time(self):
+        if self._status == 2:
+            p = self._process_list[self._progress-1]
+            return min(p.values())
+        return self._t_process - self._t_processed
+            
 
     #获取job state 编码
     def get_state_encoding(self,machine_nums):
                          
-        """job state:[当前工序加工时间,当前工序相对延时，当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码]"""
+        """job state:[当前工序加工时间,当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码]"""
 
-        job_state = [self._t_processed,self._prst-self._pests[self._progress-1]]
+        job_state = [self._t_processed,self._prst-self._pest]
 
         cp_dict = self._process_list[self._progress-1] #当前工序加工信息dict
         p1 = [cp_dict.get(i+1,0) if self._status == 2 else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]

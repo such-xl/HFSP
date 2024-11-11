@@ -69,6 +69,11 @@ class TrainingEnv():
         while in_progress_job:
             min_run_timestep = min(in_progress_job.t_process-in_progress_job.t_processed,min_run_timestep)
             in_progress_job = in_progress_job.next 
+        # 更新idle_time:
+        idle_agent = self._idle_agents.head
+        while idle_agent:
+            idle_agent.set_idle_time(min_run_timestep)
+            idle_agent = idle_agent.next
         # 更新min_run_timestep时序
         busy_agent = self._busy_agents.head
         while busy_agent:
@@ -77,7 +82,7 @@ class TrainingEnv():
             if busy_agent.status == 1: #工序加工结束
                 self._in_progress_jobs.disengage_node(busy_agent.job) # job的工序加工完成，使该job脱离in_progress_job链表
                 self._pending_jobs.append(busy_agent.job) if busy_agent.job.status==2 else self._completed_jobs.append(busy_agent.job) # 若jobs未完成，加入等待加工链表，若加工完成，加入完成链表
-                busy_agent.job.update_pest(self.time_step+min_run_timestep) #更新job 当前工序的时间最早开始时间
+                busy_agent.job.update_pest(self.time_step+min_run_timestep) #更新job 当前工序的理论最早开始时间
                 # self._draw_data[busy_agent.job.id-1][-1][-1] = self._time_step+min_run_timestep
                 busy_agent.unload_job()
                 self._busy_agents.disengage_node(busy_agent)
@@ -89,10 +94,13 @@ class TrainingEnv():
                 self._faulty_agents.append(busy_agent)
             busy_agent = next_busy_agent
         self._time_step += min_run_timestep
+
+        # 更新pending_job的prst，便以计算job的当前工序延时
         pending_job = self._pending_jobs.head
         while pending_job:
             pending_job.update_prst(self.time_step)
             pending_job = pending_job.next
+        
         done = False
         if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
             done = True
@@ -111,7 +119,6 @@ class TrainingEnv():
         self._draw_data = None
         self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
         self._completed_jobs = JobList()
-        
         self._decision_agent = []
         idle_agent = self._idle_agents.head
         while idle_agent:
@@ -121,7 +128,6 @@ class TrainingEnv():
         self._time_step = 0
         return self._decision_agent
     def get_state(self,machine,decision_machines):
-        actions = self.get_agent_actions(machine)
         # machine state:
         machine_state = [machine.get_state_encoding(4)] + [ x.get_state_encoding(4)  for x in decision_machines if x is not machine]
         idle_machine = self._idle_agents.head
@@ -130,6 +136,8 @@ class TrainingEnv():
                 machine_state.append(idle_machine.get_state_encoding(4)) 
             idle_machine = idle_machine.next
         # job state:
+        '''
+        # way 1:
         job_state = [x.get_state_encoding(self._max_machine_num) for x in actions]
         in_progress_job,pending_job =  self._in_progress_jobs.head,self._pending_jobs.head
         while pending_job:
@@ -139,79 +147,77 @@ class TrainingEnv():
         while in_progress_job:
             job_state.append(in_progress_job.get_state_encoding(self._max_machine_num))
             in_progress_job = in_progress_job.next
-        return machine_state,job_state,actions 
+        '''
+        # way 2:
+        job_state,action_mask,actions = [],[],[]
+        in_progress_job,pending_job =  self._in_progress_jobs.head,self._pending_jobs.head
+        while pending_job:
+            job_state.append(pending_job.get_state_encoding(self._max_machine_num))
+            action_mask.append(1 if pending_job.match_machine(machine.id) else 0)
+            actions.append(pending_job)
+            pending_job = pending_job.next
+
+        while in_progress_job:
+            job_state.append(in_progress_job.get_state_encoding(self._max_machine_num))
+            action_mask.append(0)
+            in_progress_job = in_progress_job.next
+        return machine_state,job_state,actions,action_mask
          
-    def step(self):
-        # record = []
-        # busy_agent = self._busy_agents.head
-        # while busy_agent:
-        #     record.append((busy_agent.id,busy_agent.job.id,busy_agent.t_process-busy_agent.t_processed))
-        #     busy_agent = busy_agent.next
-        # print(record)
+    def step(self,decision_machines,scale_factor):
+        # todo
         next_idle_agents,done = self.run()
-        return  next_idle_agents,0,done
-    
-    def reward_func_0(self,action,act_jobs,machine_id):
-        """
-            correlation coefficient: -0.6032
-        """
-        reward:float = 0
-        if len(act_jobs) == 1: # 仅存在一个空闲动作, 
-            reward = -math.log(self.time_step+1)
+        if self._reward_type == 0:
+            reward = self.reward_func_0(scale_factor,done)/len(decision_machines)
+        elif self._reward_type == 1:
+            reward = self.reward_func_1()/len(decision_machines)
+        elif self._reward_type == 2:
+            reward = self.reward_func_2(scale_factor)/len(decision_machines)
         else:
-            if action == len(act_jobs)-1: # 智能体选择空闲动作
-                avg_t = 0
-                for job in act_jobs[0:-1]:
-                    avg_t += job.get_t_process(machine_id)
-                avg_t = avg_t/(len(act_jobs)-1)
-                reward = -math.log(avg_t+1)
-            else:
-                reward = -math.log(act_jobs[action].get_t_process(machine_id))
-        return reward
-    
-    def reward_func_1(self,action,act_jobs,machine_id):
-        """
-             correlation coefficient:  0.70220
-        """
-        reward:float = 0
-        if len(act_jobs) == 1: 
-            reward = 0 # ???0.5 or 1???
-        else:
-            if action == len(act_jobs)-1:
-                reward = 0    
-            else:
-                est = act_jobs[action].earliest_start_time #实际最早开始时间
-
-                eet = act_jobs[action].get_earliest_end_time() # 理论最早结束时间
-
-                tp = act_jobs[action].get_t_process(machine_id) # 实际需要加工的时间
-
-                at = self._time_step + tp #实际加工结束的时间
-                reward = tp/(at-est)
-        return reward
-        
-    
-    def reward_func_2(self,action,act_jobs,machine_id):
-        """
-            1: correlation coefficient:  0.29470
-            2: correlation coefficient:  -0.87688
-        """
-        reward:float = 0
-        if len(act_jobs) == 1:
             reward = 0
-        else:
-            if action == len(act_jobs)-1:
-                reward  = 0
-            else:
-                job = act_jobs[action]
-                est = job.pest[job.progress-1] # 理论全局最早开始时间
-                eet = job.pest[job.progress]   # 理论全局最早结束时间
-                tp = job.get_t_process(machine_id) #实际需要加工的时间
-                at  = self._time_step + tp         #实际加工完成的时间
-
-                reward = -(at-est)/tp
-        #print('reward:',reward)
-        return reward
+        # next_idle_agents,done = self.run()
+        return  next_idle_agents,reward,done
+    
+    def reward_func_0(self,scale_factor,done):
+        """
+          每步返回-1的奖励
+        """ 
+        return 1 if done else -0.01
+    def reward_func_1(self):
+        """
+            返回in_progress_jobs的相对延迟的率
+        """
+        in_progress_job = self._in_progress_jobs.head
+        count = 0
+        delay_rate = 0
+        while in_progress_job:
+            if in_progress_job._t_processed == 0:
+                delay_rate += in_progress_job.get_delay_ratio()
+                count +=1
+            in_progress_job = in_progress_job.next
+        return -delay_rate/count if count else 0
+    def reward_func_2(self,scale_factor):
+        """
+            机器平均空闲率
+        """
+        idle_agents = self._idle_agents.head
+        count_agent,idle_rate = 0,0
+        while idle_agents:
+            idle_rate += idle_agents.get_idle_time()
+            count_agent += 1
+            idle_agents = idle_agents.next
+        r1 =  -idle_rate/count_agent*scale_factor if count_agent else 0
+        in_progress_job,pending_job =  self._in_progress_jobs.head,self._pending_jobs.head
+        count_job,latest_finnish = 0,0
+        while pending_job:
+            latest_finnish = max(latest_finnish,pending_job.current_progress_need_time())
+            count_job += 1
+            pending_job = pending_job.next
+        while in_progress_job:
+            latest_finnish = max(latest_finnish,in_progress_job.current_progress_need_time())
+            count_job += 1
+            in_progress_job = in_progress_job.next
+        r2 = -math.log(latest_finnish*0.01+1) if latest_finnish else 0
+        return (r1+r2)/2
     @property
     def action_space(self):
         return self._action_space
