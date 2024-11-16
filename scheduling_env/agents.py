@@ -19,6 +19,7 @@ class Agent():
         self.job_input_dim = job_input_dim
         self.job_seq_len = job_seq_len
         self.machine_seq_len = machine_seq_len
+        self.machine_dim = machine_input_dim
         self.action_dim = action_dim
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
@@ -31,12 +32,25 @@ class Agent():
         self.loss = 0
 
 
-    def take_action(self,machine_state,machine_mask,job_state,job_mask,act_jobs, action_mask,step_done,):
+    def take_action(self,state,machine_action,action_mask,step_done,):
+
         eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(
             -1. * step_done / self.epsilon_decay)
+
+        actions= []
         if np.random.random() < eps_threshold:
-            available_actions = np.where(action_mask)[0]
-            action = np.random.choice(available_actions)
+            i = 0
+            action_mask_copy = np.copy(action_mask)
+            while True:
+                if not machine_action[i].any():
+                    break
+                available_actions = np.where(action_mask_copy[i])[0]
+                action = np.random.choice(available_actions)
+                actions.append(action)
+                machine_action[i][action+self.machine_dim] = 1
+                if action != self.action_dim-1: # 非空闲动作
+                   action_mask_copy[:,action] = False  # 其他智能体不再可选该动作
+                i += 1
         else:
             with torch.no_grad():
                 machine_state = torch.as_tensor(machine_state, dtype=torch.float).to(self.device).unsqueeze(0)
@@ -52,8 +66,7 @@ class Agent():
             
                 _,action = torch.max(q_value,dim=1)
                 action = action.cpu().item()
-                
-        return action
+        return actions,machine_action
 
     def update(self, transition):
         gst = time.time()

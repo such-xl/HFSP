@@ -185,7 +185,7 @@ class StateNorm:
         if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
             mask[0] = False
         return padded_data,mask
-    def job_padding(self,data:list,row_action_mask:list):
+    def job_padding(self,data:list):
         # dim-padding
         data = [x + [0]*(self.job_dim-len(x)) if len(x)<self.job_dim else x[:self.job_dim] for x in data]
         #seq-padding
@@ -196,7 +196,13 @@ class StateNorm:
             padded_data[:len(data),:] = data
         if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
             mask[0] = False
-        # action_mask 1代表动作有效，0代表动作无效
-        action_mask = [row_action_mask[i] if i<len(row_action_mask) else 0 for i in range(self.action_dim)]
-        action_mask[-1] = 1
-        return padded_data*self.scale_factor, mask,np.array(action_mask)
+        return padded_data*self.scale_factor,mask
+    def machine_action_padding(self,machine_action,action_mask):
+        for ma, am  in  zip(machine_action,action_mask):
+            ma.extend([0 for _ in range(self.action_dim)])
+            am.extend([False for _ in range(self.action_dim-len(am)-1)])
+            am.append(True)
+        for _ in range(self.machine_seq_len-len(action_mask)):
+            action_mask.append([False for i in range(self.action_dim)])
+            machine_action.append([0 for i in range(self.machine_dim+self.action_dim)])
+        return np.array(machine_action),np.array(action_mask)  

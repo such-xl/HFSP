@@ -7,7 +7,7 @@ class JobList(DoublyLinkList):
     def __init__(self) -> None:
         super().__init__() 
     # 从文件中获取作业信息
-    def decode_job_flie(self,path:str):
+    def fetch_jobs_from_file(self,path:str):
         machine_num: int = 0
         with open(path,'r') as f:
 

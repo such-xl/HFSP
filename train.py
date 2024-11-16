@@ -17,9 +17,9 @@ class Train():
 
     def train_model(self,reward_type,num_episodes,job_input_dim,job_hidden_dim,machine_input_dim,machine_hidden_dim,action_dim,job_seq_len,machine_seq_len,
                     num_heads,gamma,epsilon_start,epsilon_end,epsilon_decay,tau,target_update,buffer_size,minimal_size,batch_size,lr,scale_factor,device):
+
         env = TrainingEnv(action_dim=action_dim,reward_type=reward_type,max_machine_num=machine_seq_len,max_job_num=job_seq_len)
         state_norm = StateNorm(machine_seq_len,machine_input_dim,job_seq_len,job_input_dim,action_dim,scale_factor)
-        state_deque = deque(maxlen=machine_seq_len)
         train_data_path = self.data_path +'train_data/'
         jobs_name = sorted(os.listdir(train_data_path))
         record_makespan = {}
@@ -40,44 +40,31 @@ class Train():
             G = 0
             #Generate an FJSS instance from teh emulating environment
             # job_name = random.choice(jobs_name)
-            job_name = random.choice(['Mk10.fjs','Mk06.fjs','Mk03.fjs'])
+            job_name = random.choice(['ela01.fjs'])
             job_path = train_data_path+job_name
-            decision_machines = env.reset(jobs_path=job_path)
+            state,machine_action,action_mask = env.reset(jobs_path=job_path)
+            state,state_mask = state_norm.job_padding(state)
+            machine_action,action_mask = state_norm.machine_action_padding(machine_action,action_mask)
             done = False
             while not done:
-                # 序贯决策
-                for machine in decision_machines:
-                    machine_state,job_state,actions,action_mask = env.get_state(machine,decision_machines)
-                    # state预处理
-                    machine_padded_state,machine_mask = state_norm.machine_padding(machine_state)
-
-                    job_padded_state,job_mask,action_mask = state_norm.job_padding(job_state,action_mask)
-                    # 采样一个动作
-                    action = agent.take_action(machine_padded_state,machine_mask,job_padded_state,job_mask,actions,action_mask,step_done)
-                    # 提交动作
-                    env.commit_action(machine,actions,action) 
-                    state_deque.append((machine_padded_state,job_padded_state,machine_mask,job_mask,action_mask,action))
-                # 执行
-                next_decision_machines,reward,done = env.step(decision_machines,scale_factor) # 获取的是平分的缩放奖励
-                G += reward*len(decision_machines)
-                decision_machines = next_decision_machines
+                # 采样一个动作
+                actions,machine_action = agent.take_action(state,machine_action,action_mask,step_done)
+                # 执行动作
+                next_state,next_machine_action,next_action_mask,reward,done = env.step(actions,machine_action,scale_factor)
+                next_state,next_state_mask = state_norm.job_padding(next_state)
+                next_machine_action = state_norm.machine_action_padding(next_machine_action,next_action_mask)
                 step_done += 1
-                # print(agent.none_action_count,agent.action_count,agent.none_action_count/agent.action_count)
 
-                #将state存入buffer
-                sst = time.time()
-                while len(state_deque)>1:
-                    state = state_deque.popleft() #(machine_padded_state,job_padded_state,machine_mask,job_mask,action_mask,action)
-                    next_state = state_deque[0]
-                    at = time.time()
-                    replay_buffer.add((*(state+next_state[:-1]),reward,True if done and len(state_deque)==1 else False))
-                    ate = time.time()-at
-                    add_time += ate
-                st += time.time()-sst
+                """
+                # 存储经验
+                replay_buffer.add(state,machine_action,action_mask,next_state,)
+
+
                 if replay_buffer.size()>=minimal_size:
                     transition = replay_buffer.sample(batch_size=batch_size)
                     tt = agent.update(transition)
                     trt+= tt
+                """
             record_makespan[job_name].append(env.time_step)
             record_reward[job_name].append(G) 
             end_time = time.time() - start_time
@@ -138,7 +125,7 @@ class Train():
 
 
 lr = 1e-6
-num_episodes = 3000
+num_episodes = 1
 job_input_dim  = 32
 machine_input_dim = 4
 job_hidden_dim = 32
@@ -149,7 +136,7 @@ job_seq_len = 30
 machine_seq_len = 15
 gamma = 1
 epsilon_start = 1
-epsilon_end = 0.005
+epsilon_end = 1
 epsilon_decay = 500
 tau = 0.005
 target_update = 1000

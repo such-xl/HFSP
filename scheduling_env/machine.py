@@ -29,9 +29,10 @@ class Machine(Node):
         print()
     
     # 装载job
-    def load_job(self,job):
+    def load_job(self,job,time_step):
         """把job装置至machine"""
         self._job = job
+        job.load_to_machine(self,time_step)
         self._status = 2
         self._t_processed = 0
         self._t_process = self._job.get_t_process(self._id)

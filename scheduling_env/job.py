@@ -26,11 +26,6 @@ class Job(Node):
             ct += pt
             pests.append(ct)
         return pests
-    def show(self):
-        print(len(self._encode))
-        # for i,p in enumerate(self._process_list,start=1):
-        #     print(f'工序{i}')
-        #     print(p)
 
     #获取当前工序最早完成时间 
     def get_earliest_end_time(self):
@@ -42,16 +37,31 @@ class Job(Node):
     
 
     def get_t_process(self, machine_id):
-        return self._process_list[self._progress-1][machine_id]
+        try:
+            return self._process_list[self._progress-1][machine_id]
+        except:
+            return False
     
-    # 判断当前工序是否可被agent_i执行
     def match_machine(self,machine_id) -> bool:
-        return machine_id in self._process_list[self._progress-1]
+        """
+            判断当前工序是否可以被机器machine_id加工
+        """
+        try:
+            return machine_id in self._process_list[self._progress-1]
+        except :
+            return False
 
-        
+    def get_process_remaining_time(self):
+        """
+            获取当前工序剩余加工时间
+        """
+        if self._status != 1:
+            raise ValueError('当前工序未在加工中')
+
+        return self._t_process - self._t_processed 
     
     def load_to_machine(self,machine,time_step):
-        """将job转载至machine"""
+        """将job装载至machine"""
         self._machine = machine
         self._t_process = self.get_t_process(machine.id)
         self._t_processed = 0
@@ -60,7 +70,14 @@ class Job(Node):
 
     def unload_machine(self):
         self._machine = None
-    
+    def is_completed(self):
+        """
+            判断是否所有工序都完成
+
+        """ 
+        return self._status == 0
+    def is_wating_for_machine(self):
+        return self._status == 2
     def run(self,min_run_timestep):
         """
             执行min_run_timestep 时序
@@ -72,7 +89,6 @@ class Job(Node):
             self._t_process = 0
             self._progress +=1
             if self._progress == self._process_num+1:    # 最后一道工序加工完成
-                self._progress = 0
                 self._status = 0
                 #self._pest += self._t_process  # 更新实际当前工序的最早开始时间
             else:
@@ -102,7 +118,6 @@ class Job(Node):
         """job state:[当前工序加工时间,当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码]"""
 
         job_state = [self._t_processed,self._prst-self._pest]
-
         cp_dict = self._process_list[self._progress-1] #当前工序加工信息dict
         p1 = [cp_dict.get(i+1,0) if self._status == 2 else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]
         p2 = [self._process_list[self._progress].get(i+1,0) if self._progress < self._process_num else 0 for i in range(machine_nums)]

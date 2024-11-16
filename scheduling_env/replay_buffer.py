@@ -23,9 +23,9 @@ class ReplayBuffer:
         self.points = [0]
     def add(self,data):
         """
-        machine_padded_state,job_padded_state,machine_mask,job_mask,action_mask,action
-        next_machine_padded_state,next_job_padded_state,next_machine_mask,next_job_mask,next_action_mask
-        reward,done
+        
+        state,state_mask,action,action_mask,next_state,next_action_mask,next_sate_mask,reward,done
+
         """
         self.buffer[self.pos] *= 0
         p = 0
