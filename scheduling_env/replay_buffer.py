@@ -6,7 +6,7 @@ import torch
 bufferEntity = namedtuple('Transition',('machine_state','job_state','machine_mask','job_mask','action','next_machine_state','next_job_state','next_machine_mask','next_job_mask','reward','done'))
 
 class ReplayBuffer:
-    def __init__(self, capacity, job_dim, job_seq_len, machine_dim, machine_seq_len,action_dim):
+    def __init__(self, capacity,state_seq_len,satet_dim,machine_action_dim,machine_seq_len):
         self.pos = 0
         self.buffer_size = capacity
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")

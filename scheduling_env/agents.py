@@ -1,34 +1,63 @@
-from typing import NamedTuple
-import time
 import torch
 import torch.nn.functional as F
 import numpy as np
-from .model import Actor, Actora
+from .model import D3QN
 from .utils import StateNorm
-
+# model_params = {
+#     "state_dim": 18,
+#     "machine_dim": 4,
+#     "action_dim": 32,
+#     "num_heads": 1,
+#     "job_seq_len": 30,
+#     "machine_seq_len": 16,
+#     "dropout": 0.1,
+# }
+# train_params = {
+#     "num_episodes": 100,
+#     "batch_size": 512,
+#     "learning_rate": 1e-6,
+#     "epsilon_start": 1,
+#     "epsilon_end": 1,
+#     "epsilon_decay": 500,
+#     "gamma": 1,
+#     "tau": 0.005,
+#     "target_update": 1000,
+#     "buffer_size": 10_000,
+#     "minimal_size": 1000,
+#     "scale_factor": 0.01,
+#     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
+#     "reward_type": 0,
+# }
 class Agent():
-    def __init__(self, job_input_dim, job_hidden_dim, machine_input_dim, machine_hidden_dim,
-                 action_dim, num_heads, job_seq_len, machine_seq_len, epsilon_start, epsilon_end, epsilon_decay, tau,
-                 learning_rate, gamma, target_update, device) -> None:
-        self.actor = Actor(job_input_dim, job_hidden_dim, machine_input_dim, machine_hidden_dim, action_dim,
-                           num_heads).to(device)
-        self.target_actor = Actor(job_input_dim, job_hidden_dim, machine_input_dim, machine_hidden_dim, action_dim,
-                                  num_heads).to(device)
-        self.optimizer = torch.optim.AdamW(self.actor.parameters(), lr=learning_rate)
-        print(learning_rate)
-        self.job_input_dim = job_input_dim
-        self.job_seq_len = job_seq_len
-        self.machine_seq_len = machine_seq_len
-        self.machine_dim = machine_input_dim
-        self.action_dim = action_dim
-        self.epsilon_start = epsilon_start
-        self.epsilon_end = epsilon_end
-        self.epsilon_decay = epsilon_decay
-        self.tau = tau
-        self.gamma = gamma
-        self.target_update = target_update
-        self.device = device
-        self.count = 0
+    def __init__(self,model_params,train_params) -> None:
+        
+        self.device = train_params['device']
+        self.main_net = D3QN(
+            state_dim = model_params['state_dim'],
+            x_dim = model_params['machine_dim'] + model_params['action_dim'],
+            action_dim = model_params['action_dim'],
+            num_heads = model_params['num_heads'],
+            dropout =  model_params['dropout'],
+        ).to(self.device)
+        self.target_net = D3QN(
+            state_dim = model_params['state_dim'],
+            x_dim = model_params['machine_dim'] + model_params['action_dim'],
+            action_dim = model_params['action_dim'],
+            num_heads = model_params['num_heads'],
+            dropout =  model_params['dropout'],
+        ).to(self.device)
+        self.target_net.load_state_dict(self.main_net.state_dict())
+        
+        self.optimizer = torch.optim.AdamW(self.main_net.parameters(), lr=train_params['learning_rate'])
+        self.machine_seq_len = model_params['machine_seq_len']
+        self.machine_dim = model_params['machine_dim']
+        self.action_dim = model_params['action_dim']
+        self.epsilon_start = train_params['epsilon_start']
+        self.epsilon_end = train_params['epsilon_end']
+        self.epsilon_decay = train_params['epsilon_decay']
+        self.tau = train_params['tau']
+        self.gamma = train_params['gamma']
+        self.target_update = train_params['target_update']
         self.loss = 0
 
 
@@ -42,7 +71,7 @@ class Agent():
             i = 0
             action_mask_copy = np.copy(action_mask)
             while True:
-                if i>=15 or not machine_action[i].any():
+                if i>=self.machine_seq_len or not machine_action[i].any():
                     break
                 available_actions = np.where(action_mask_copy[i])[0]
                 action = np.random.choice(available_actions)
@@ -53,23 +82,35 @@ class Agent():
                 i += 1
         else:
             with torch.no_grad():
-                machine_state = torch.as_tensor(machine_state, dtype=torch.float).to(self.device).unsqueeze(0)
-                job_state = torch.as_tensor(job_state, dtype=torch.float).to(self.device).unsqueeze(0)
-                machine_mask = torch.as_tensor(machine_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
-                job_mask = torch.as_tensor(job_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
+                state = torch.as_tensor(state, dtype=torch.float).to(self.device).unsqueeze(0)
+                state_mask = torch.as_tensor(state_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
 
-                q_value = self.actor(machine_state,job_state,machine_mask,job_mask).squeeze(1)
-
-                # way 1:无效值屏蔽
-                action_mask = torch.as_tensor(action_mask,dtype=torch.bool).to(self.device).unsqueeze(0)
-                q_value[~action_mask] = -float('inf')
-            
-                _,action = torch.max(q_value,dim=1)
-                action = action.cpu().item()
+                mem = self.main_net.encoder(state,state_mask)
+                machine_action = torch.as_tensor(machine_action, dtype=torch.float).to(self.device).unsqueeze(0)
+                action_mask_copy = np.copy(action_mask)
+                action_mask_copy = torch.as_tensor(action_mask_copy,dtype=torch.bool).to(self.device)
+                machine_action_mask = torch.ones(1,self.machine_seq_len,dtype=torch.bool).to(self.device)
+                i = 0
+                while True:
+                    if i>=self.machine_seq_len or not machine_action[0][i].any():
+                        break
+                    machine_action_mask[0,i] = False
+                    q_value = self.main_net(mem,machine_action,machine_action_mask).squeeze(1)
+                
+                    # way 1:无效值屏蔽
+                    q_value[~action_mask_copy[i].unsqueeze(0)] = -float('inf')
+ 
+                    _,action = torch.max(q_value,dim=1)
+                    machine_action[0][i][action+self.machine_dim] = 1
+                    action = action.cpu().item()
+                    if action != 31: # 非选择空闲动作
+                        action_mask_copy[:,action] = False
+                    actions.append(action)
+                    i+=1
+            machine_action = machine_action.cpu().numpy()
         return actions,machine_action
 
     def update(self, transition):
-        gst = time.time()
         machine_states = transition.machine_states
         job_states = transition.job_states
         machine_masks = transition.machine_masks.to(torch.bool)
@@ -125,18 +166,9 @@ class Agent():
             print('loss:',self.loss.item()/1000)
             self.loss = 0
         self.count += 1
-        tt = time.time()-gst
-        return tt
 
     def save_model(self, path):
-        torch.save(self.actor.state_dict(), path)
+        torch.save(self.main_net.state_dict(), path)
 
     def load_model(self, path):
-        self.actor.load_state_dict(torch.load(path))
-
-
-    def save_model(self, path):
-        torch.save(self.actor.state_dict(), path)
-
-    def load_model(self, path):
-        self.actor.load_state_dict(torch.load(path))
+        self.main_net.load_state_dict(torch.load(path))
