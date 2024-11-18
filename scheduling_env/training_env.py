@@ -3,10 +3,10 @@
     1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
     2: 判断所有job是否完成 over if done else repeat 1
 '''
+
 import math
-from .job_list import JobList
-from .machine_list import MachineList
-from .utils import StateNorm
+from .job import Job,JobList,JobStatus
+from .machine import Machine,MachineList,MachineStatus
 class TrainingEnv():
     # 初始化环境
     def __init__(self,action_dim,reward_type,max_machine_num,max_job_num) -> None:
@@ -24,18 +24,19 @@ class TrainingEnv():
         self._draw_data = None        #画图信息
         self._time_step = 0
         self._reward_type = reward_type
-        self._decision_machines = None # 某時刻参与决策的所有机器
-        self._job_list = None # 某时刻未完成的作业列表
+        self._decision_machines:list[Machine] = None # 某時刻参与决策的所有机器
+        self._job_list:list[Job] = None # 某时刻未完成的作业列表
+
     def get_jobs_from_file(self, jobs_path:str):
         self._machine_num = self._uncompleted_jobs.fetch_jobs_from_file(jobs_path)
         self._job_num = self._uncompleted_jobs.length
         self._idle_machines = MachineList(self._machine_num)
-        # self._draw_data = [[] for i in range(self._jobs_num)]
+
 
 
     def is_decision_machine(self,agent_id):
         """是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策"""
-        uncompleted_job = self._uncompleted_jobs.head
+        uncompleted_job :Job = self._uncompleted_jobs.head
         while uncompleted_job:
             if uncompleted_job.is_wating_for_machine() and uncompleted_job.match_machine(agent_id):
                 return True
@@ -43,36 +44,26 @@ class TrainingEnv():
         return False
     def run(self):
         """
-            所有忙碌agent和job更新若干time_step,使得必产生空闲机器
+            所有忙碌agent和job更新一个time_step,使得必产生空闲机器
+            在内添加随机时间
         """
-        #找出产生空闲机器的最短运行时间
-
-        min_run_timestep = math.inf
-        for job in self._job_list:
-            if job.status == 1:
-                min_run_timestep = min(min_run_timestep,job.get_process_remaining_time())
-        # 更新idle_time:
-        idle_machine = self._idle_machines.head
-        while idle_machine:
-            idle_machine.set_idle_time(min_run_timestep)
-            idle_machine = idle_machine.next
-    
-        # 更新min_run_timestep时序
-        busy_machine = self._busy_machines.head
+        # 更新one timestep时序
+        min_run_timestep = 1
+        busy_machine:Machine = self._busy_machines.head
         while busy_machine:
+            busy_job:Job = busy_machine.job
             busy_machine.run(min_run_timestep)
             next_busy_machine = busy_machine.next
-            if busy_machine.status == 1: #工序加工结束
-                k = busy_machine.job.is_completed()
-                if busy_machine.job.is_completed(): # 所有工序加工完成
-                    self._uncompleted_jobs.disengage_node(busy_machine.job)
-                    self._completed_jobs.append(busy_machine.job)
-                    busy_machine.job.update_pest(self.time_step+min_run_timestep) #更新job 当前工序的理论最早开始时间
-                    busy_machine.unload_job()
+
+            if busy_machine.is_idle() : #机器空闲, 代表工序加工完成
+
+                if busy_job.is_completed(): # 所有工序加工完成
+                    self._uncompleted_jobs.disengage_node(busy_job)
+                    self._completed_jobs.append(busy_job)
                 self._busy_machines.disengage_node(busy_machine)
                 self._idle_machines.append(busy_machine)
             
-            elif busy_machine.status == 0: #机器故障,暂时不实现
+            elif busy_machine.is_fault(): #机器故障,暂时不实现
                 self._busy_machines.disengage_node(busy_machine)
                 self._faulty_machines.append(busy_machine)
             busy_machine = next_busy_machine
@@ -83,15 +74,15 @@ class TrainingEnv():
             done = True
             return done
         # 获取需要决策的智能体
-        self._decision_machines = []
+        decision_machines = []
         idle_machine = self._idle_machines.head
         while idle_machine:
             if self.is_decision_machine(idle_machine.id):
-                self._decision_machines.append(idle_machine) 
+                decision_machines.append(idle_machine) 
             idle_machine = idle_machine.next
-        print(len(self._decision_machines))
-        if len(self._decision_machines)==0: # 如果没有需要决策的智能体，则继续run
+        if len(decision_machines)==0: # 如果没有需要决策的智能体，则继续run
             return self.run()
+        self._decision_machines = decision_machines
         return done
     def reset(self,jobs_path:str):
         """
@@ -100,16 +91,16 @@ class TrainingEnv():
                 state: 当前job环境状态
                 machine_action: 决策机器的状态
                 action_mask: 机器的动作mask
-                action_jobs: 机器的具体可选job
         """
         self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
         self._decision_machines,self._job_list = [],[]
-        idle_machine = self._idle_machines.head
+        idle_machine:Machine = self._idle_machines.head
         while idle_machine:
             if self.is_decision_machine(idle_machine.id):
                 self._decision_machines.append(idle_machine)
             idle_machine = idle_machine.next
-        job = self._uncompleted_jobs.head
+        # 重置job_list
+        job:Job = self._uncompleted_jobs.head
         while job:
             self._job_list.append(job)
             job = job.next
@@ -117,13 +108,13 @@ class TrainingEnv():
         state,machine_action,action_mask = self.get_state()
         return state,machine_action,action_mask
     def get_state(self):
-        uncompleted_job = self._uncompleted_jobs.head
+        uncompleted_job:Job = self._uncompleted_jobs.head
         state,machine_action = [],[x.get_state_encoding(4) for x in self._decision_machines]
         action_mask = [[] for i in range(len(self._decision_machines))]
         while uncompleted_job:
             state.append(uncompleted_job.get_state_encoding(self._max_machine_num))
             for i,machines in enumerate(self._decision_machines):
-                action_mask[i].append(True if uncompleted_job.match_machine(machines.id) else False)
+                action_mask[i].append(True if uncompleted_job.is_wating_for_machine() and uncompleted_job.match_machine(machines.id) else False)
             uncompleted_job = uncompleted_job.next
         
         return state,machine_action,action_mask
@@ -142,8 +133,6 @@ class TrainingEnv():
             job_list.append(job)
             job = job.next
         self._job_list = job_list
-        print('uncompleted_jobs:',self._uncompleted_jobs.length)
-        print('completed_jobs:',self._completed_jobs.length)
         reward = 0
         state,machine_action,action_mask = self.get_state()
         return  state,machine_action,action_mask,reward,done
@@ -193,28 +182,9 @@ class TrainingEnv():
     def action_space(self):
         return self._action_space
     @property
-    def agents_num(self):
-        return self._agents_num
-    @property
     def jobs_num(self):
         return self._jobs_num
-    @property
-    def completed_jobs(self):
-        return self._completed_jobs
-    @property
-    def pending_jobs(self):
-        return self._pending_jobs
-    @property
-    def in_progress_jobs(self):
-        return self._in_progress_jobs
-    @property
-    def faulty_agents(self):
-        return self._faulty_agents
-    @property
-    def idle_agents(self):
-        return self._idle_agents
-    @property
-    def busy_agents(self):
+ 
         return self._busy_agents
     @property
     def draw_data(self):
@@ -222,6 +192,3 @@ class TrainingEnv():
     @property
     def time_step(self):
         return self._time_step
-    @property
-    def decision_agent(self):
-        return self._decision_agent

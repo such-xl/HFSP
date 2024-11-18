@@ -39,8 +39,8 @@ class Train():
             start_time = time.time()
             G = 0
             #Generate an FJSS instance from teh emulating environment
-            # job_name = random.choice(jobs_name)
-            job_name = random.choice(['ela01.fjs'])
+            job_name = random.choice(jobs_name)
+            # job_name = random.choice(['ela01.fjs'])
             job_path = train_data_path+job_name
             state,machine_action,action_mask = env.reset(jobs_path=job_path)
             state,state_mask = state_norm.job_padding(state)
@@ -48,13 +48,15 @@ class Train():
             done = False
             while not done:
                 # 采样一个动作
-                actions,machine_action = agent.take_action(state,machine_action,action_mask,step_done)
+                actions,machine_action = agent.take_action(state,state_mask,machine_action,action_mask,step_done)
                 # 执行动作
                 next_state,next_machine_action,next_action_mask,reward,done = env.step(actions,machine_action,scale_factor)
-                next_state,next_state_mask = state_norm.job_padding(next_state)
-                next_machine_action = state_norm.machine_action_padding(next_machine_action,next_action_mask)
-                step_done += 1
 
+                next_state,next_state_mask = state_norm.job_padding(next_state)
+                next_machine_action,action_mask = state_norm.machine_action_padding(next_machine_action,next_action_mask)
+
+                state,state_mask,machine_action,action_mask = next_state,next_state_mask,next_machine_action,next_action_mask
+                step_done += 1
                 """
                 # 存储经验
                 replay_buffer.add(state,machine_action,action_mask,next_state,)
@@ -125,13 +127,13 @@ class Train():
 
 
 lr = 1e-6
-num_episodes = 1
-job_input_dim  = 32
+num_episodes = 100
+job_input_dim  = 17
 machine_input_dim = 4
 job_hidden_dim = 32
 machine_hidden_dim = 32
 action_dim = 32
-num_heads = 4
+num_heads = 1
 job_seq_len = 30
 machine_seq_len = 15
 gamma = 1

@@ -32,7 +32,7 @@ class Agent():
         self.loss = 0
 
 
-    def take_action(self,state,machine_action,action_mask,step_done,):
+    def take_action(self,state,state_mask,machine_action,action_mask,step_done,):
 
         eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(
             -1. * step_done / self.epsilon_decay)
@@ -42,7 +42,7 @@ class Agent():
             i = 0
             action_mask_copy = np.copy(action_mask)
             while True:
-                if not machine_action[i].any():
+                if i>=15 or not machine_action[i].any():
                     break
                 available_actions = np.where(action_mask_copy[i])[0]
                 action = np.random.choice(available_actions)
