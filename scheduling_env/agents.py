@@ -94,7 +94,7 @@ class Agent():
                 while True:
                     if i>=self.machine_seq_len or not machine_action[0][i].any():
                         break
-                    machine_action_mask[0,i] = False
+                    machine_action_mask[:,i] = False
                     q_value = self.main_net(mem,machine_action,machine_action_mask).squeeze(1)
                 
                     # way 1:无效值屏蔽
@@ -111,37 +111,33 @@ class Agent():
         return actions,machine_action
 
     def update(self, transition):
-        machine_states = transition.machine_states
-        job_states = transition.job_states
-        machine_masks = transition.machine_masks.to(torch.bool)
-        job_masks = transition.job_masks.to(torch.bool)
-        action_masks = transition.action_masks.to(torch.bool)
-        actions = transition.actions.to(torch.int64)
-        next_machine_states = transition.next_machine_states
-        next_job_states = transition.next_job_states
-        next_machine_masks = transition.next_machine_masks.to(torch.bool)
-        next_job_masks = transition.next_job_masks.to(torch.bool)
-        next_action_masks = transition.next_action_masks.to(torch.bool)
+        states = transition.states
+        state_masks = transition.state_masks.to(torch.bool)
+        machine_actions = transition.machine_actions
         rewards = transition.rewards
         dones = transition.dones
-        '''
-        print('machine_states:',machine_states.shape)
-        print('job_states:',job_states.shape)
-        print('machine_masks:',machine_masks.shape)
-        print('job_masks:',job_masks.shape)
-        print('action_masks:',action_masks.shape)
-        print('actions:',actions.shape)
-        print('next_machine_states:',next_machine_states.shape)
-        print('next_job_states:',next_job_states.shape)
-        print('next_machine_masks:',next_machine_masks.shape)
-        print('next_job_masks:',next_job_masks.shape)
-        print('next_action_masks:',next_action_masks.shape)
+        next_states = transition.next_states
+        next_state_masks = transition.next_state_masks.to(torch.bool)
+
+        print('states:',states.shape)
+        print('state_masks:',state_masks.shape)
+        print('machine_actions:',machine_actions.shape)
         print('rewards:',rewards.shape)
         print('dones:',dones.shape)
-        '''
+        print('next_states:',next_states.shape)
+        print('next_state_masks:',next_state_masks.shape)
 
-        q_values = self.actor(machine_states,job_states,machine_masks,job_masks).squeeze(1)  # [batch_size,1,action_dim]->[batch_size,action_dim]
-        q_values = q_values.gather(1, actions)  # [batch_size,1]
+        pass
+        mem = self.main_net.encoder(states,state_masks)
+        machine_actions_copy = machine_actions.clone()
+        machine_actions_copy[:,:,self.machine_dim:] = 0
+        key_padding_mask = torch.ones(machine_actions.size(0),self.machine_seq_len,dtype=torch.bool).to(self.device)
+        for i in range(self.machine_seq_len):
+            key_padding_mask[:,i] = False
+            q_values = self.main_net(mem,machine_actions_copy,key_padding_mask)
+            q_values = q_values[machine_actions[:,i,self.machine_dim:].to(torch.bool)].unsqueeze(1)
+            pass
+            
         with torch.no_grad():
             next_q_values = self.target_actor(next_machine_states,next_job_states,next_machine_masks,next_job_masks).squeeze(1)  # [batch_size,1,action_dim] ->[batch_size,action_dim]
             next_q_values[~next_action_masks] = -float('inf')

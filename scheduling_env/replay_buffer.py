@@ -3,28 +3,27 @@ from typing import NamedTuple
 import numpy as np
 import torch
 
-bufferEntity = namedtuple('Transition',('machine_state','job_state','machine_mask','job_mask','action','next_machine_state','next_job_state','next_machine_mask','next_job_mask','reward','done'))
-
+bufferEntity = namedtuple('Transition',(
+    "state","state_mask","machine_action","action_mask","reward","done","next_state","next_state_mask"
+))
 class ReplayBuffer:
-    def __init__(self, capacity,state_seq_len,satet_dim,machine_action_dim,machine_seq_len):
+    def __init__(self, capacity,state_seq_len,state_dim,machine_action_dim,machine_seq_len):
         self.pos = 0
         self.buffer_size = capacity
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-        self.entity_size = (job_dim*job_seq_len+machine_dim*machine_seq_len+machine_seq_len+job_seq_len+action_dim)*2 + 1+ 1+1
+        self.entity_size = state_seq_len*state_dim*2 + state_seq_len*2 + machine_action_dim*machine_seq_len  + 1 + 1
 
         self.buffer = torch.zeros((capacity,self.entity_size)).to(self.device)
-        self.job_dim = job_dim
-        self.job_seq_len = job_seq_len
-        self.machine_dim = machine_dim
+        self.state_seq_len = state_seq_len
         self.machine_seq_len = machine_seq_len
-        self.action_dim = action_dim
+
         self.is_full = False
         self.points = [0]
     def add(self,data):
         """
         
-        state,state_mask,action,action_mask,next_state,next_action_mask,next_sate_mask,reward,done
+        state,state_mask,machine_action,reward,done,next_state,next_state_mask
 
         """
         self.buffer[self.pos] *= 0
@@ -42,19 +41,13 @@ class ReplayBuffer:
         samples_idx = np.random.randint(0, self.size(), size=batch_size)
         ten = self.buffer[samples_idx, :]
         p = self.points
-        return BufferEntity(ten[:,p[0]:p[1]].reshape((batch_size,self.machine_seq_len,-1)), # machine state
-                            ten[:, p[1]: p[2]].reshape((batch_size,self.job_seq_len, -1)),   # job state
-                            ten[:, p[2]: p[3]],                                            # machine mask
-                            ten[:, p[3]: p[4]],                                              # job mask
-                            ten[:, p[4]: p[5]],                                      # action_mask
-                            ten[:, p[5]: p[6]].reshape((batch_size,-1)),                   # action
-                            ten[:, p[6]: p[7]].reshape((batch_size,self.machine_seq_len,-1)), # next_machine_state
-                            ten[:, p[7]: p[8]].reshape((batch_size,self.job_seq_len, -1)),   # next_job_state
-                            ten[:, p[8]: p[9]],                                             # next_machine_mask
-                            ten[:, p[9]: p[10]],                                              # next_job_mask
-                            ten[:, p[10]: p[11]],                                             # next_action_mask
-                            ten[:, p[11]:p[12]],                                             # reward
-                            ten[:, p[12]:p[13]],                                            # done 
+        return BufferEntity(ten[:,p[0]:p[1]].reshape((batch_size,self.state_seq_len,-1)), # state
+                            ten[:, p[1]: p[2]],                                             # state_mask
+                            ten[:, p[2]: p[3]].reshape((batch_size,self.machine_seq_len,-1)), # machine action
+                            ten[:, p[3]: p[4]],                                             # reward
+                            ten[:, p[4]: p[5]],                                              # done
+                            ten[:, p[5]: p[6]].reshape((batch_size,self.state_seq_len,-1)), # next_state
+                            ten[:, p[6]: p[7]]                                              # next_state_mask
                             )
 
     def size(self):
@@ -68,16 +61,10 @@ class ReplayBuffer:
 
 
 class BufferEntity(NamedTuple):
-    machine_states: torch.Tensor
-    job_states:torch.Tensor
-    machine_masks:torch.Tensor
-    job_masks:torch.Tensor
-    action_masks: torch.Tensor
-    actions: torch.Tensor
-    next_machine_states: torch.Tensor
-    next_job_states: torch.Tensor
-    next_machine_masks: torch.Tensor
-    next_job_masks: torch.Tensor
-    next_action_masks: torch.Tensor
+    states: torch.Tensor
+    state_masks:torch.Tensor
+    machine_actions:torch.Tensor
     rewards: torch.Tensor
     dones: torch.Tensor
+    next_states: torch.Tensor
+    next_state_masks: torch.Tensor
