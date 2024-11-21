@@ -35,7 +35,6 @@ class Train():
         agent = Agent(model_params,train_params)
 
 
-        '''
         replay_buffer = ReplayBuffer(
             capacity = train_params["buffer_size"],
             state_seq_len = model_params["job_seq_len"],
@@ -43,7 +42,6 @@ class Train():
             machine_action_dim = model_params["machine_dim"] + model_params["action_dim"],
             machine_seq_len = model_params["machine_seq_len"],    
         )
-        '''
 
         train_data_path = self.data_path +'train_data/'
         jobs_name = sorted(os.listdir(train_data_path))
@@ -76,19 +74,15 @@ class Train():
 
                 next_state,next_state_mask = state_norm.job_padding(next_state)
                 next_machine_action,action_mask = state_norm.machine_action_padding(next_machine_action,next_action_mask)
-
+                # 存储经验
+                replay_buffer.add((state,state_mask,machine_action,reward,done,next_state,next_state_mask))
                 state,state_mask,machine_action,action_mask = next_state,next_state_mask,next_machine_action,next_action_mask
                 step_done += 1
-                """
-                # 存储经验
-                replay_buffer.add(state,machine_action,action_mask,next_state,)
 
+                if replay_buffer.size() >= train_params['minimal_size']:
+                    transition = replay_buffer.sample(batch_size=train_params['batch_size'])
+                    agent.update(transition)
 
-                if replay_buffer.size()>=minimal_size:
-                    transition = replay_buffer.sample(batch_size=batch_size)
-                    tt = agent.update(transition)
-                    trt+= tt
-                """
             record_makespan[job_name].append(env.time_step)
             record_reward[job_name].append(G) 
             print('=================================')
@@ -111,7 +105,7 @@ model_params = {
     "machine_dim": 4,
     "action_dim": 32,
     "num_heads": 1,
-    "job_seq_len": 30,
+    "job_seq_len": 32,
     "machine_seq_len": 16,
     "dropout": 0.1,
 }
