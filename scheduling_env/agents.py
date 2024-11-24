@@ -129,6 +129,7 @@ class Agent():
 
         pass
         mem = self.main_net.encoder(states,state_masks)
+<<<<<<< HEAD
         machine_actions_copy = machine_actions.clone()
         machine_actions_copy[:,:,self.machine_dim:] = 0
         key_padding_mask = torch.ones(machine_actions.size(0),self.machine_seq_len,dtype=torch.bool).to(self.device)
@@ -138,6 +139,13 @@ class Agent():
             q_values = q_values[machine_actions[:,i,self.machine_dim:].to(torch.bool)].unsqueeze(1)
             pass
             
+=======
+        for i in range(self.machine_seq_len):
+            q_vlaues = self.main_net(mem,machine_actions[:,i,:])
+        
+        q_values = self.actor(machine_states,job_states,machine_masks,job_masks).squeeze(1)  # [batch_size,1,action_dim]->[batch_size,action_dim]
+        q_values = q_values.gather(1, actions)  # [batch_size,1]
+>>>>>>> d448acc22b31b22ebcd6783f2400f796bd298978
         with torch.no_grad():
             next_q_values = self.target_actor(next_machine_states,next_job_states,next_machine_masks,next_job_masks).squeeze(1)  # [batch_size,1,action_dim] ->[batch_size,action_dim]
             next_q_values[~next_action_masks] = -float('inf')
