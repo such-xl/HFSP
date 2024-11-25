@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 bufferEntity = namedtuple('Transition',(
-    "state","state_mask","machine_action","action_mask","reward","done","next_state","next_state_mask"
+    "state","state_mask","machine_action","action_mask","reward","done","next_state","next_state_mask","next_machine_action"
 ))
 class ReplayBuffer:
     def __init__(self, capacity,state_seq_len,state_dim,machine_action_dim,machine_seq_len):
@@ -12,7 +12,7 @@ class ReplayBuffer:
         self.buffer_size = capacity
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-        self.entity_size = state_seq_len*state_dim*2 + state_seq_len*2 + machine_action_dim*machine_seq_len  + 1 + 1
+        self.entity_size = state_seq_len*state_dim*2 + state_seq_len*2 + machine_action_dim*machine_seq_len*2  + 1 + 1
 
         self.buffer = torch.zeros((capacity,self.entity_size)).to(self.device)
         self.state_seq_len = state_seq_len
@@ -23,7 +23,7 @@ class ReplayBuffer:
     def add(self,data):
         """
         
-        state,state_mask,machine_action,reward,done,next_state,next_state_mask
+        state,state_mask,machine_action,reward,done,next_state,next_state_mask,next_machine_action
 
         """
         self.buffer[self.pos] *= 0
@@ -47,7 +47,9 @@ class ReplayBuffer:
                             ten[:, p[3]: p[4]],                                             # reward
                             ten[:, p[4]: p[5]],                                              # done
                             ten[:, p[5]: p[6]].reshape((batch_size,self.state_seq_len,-1)), # next_state
-                            ten[:, p[6]: p[7]]                                              # next_state_mask
+                            ten[:, p[6]: p[7]],                                              # next_state_mask
+                            ten[:, p[7]: p[8]].reshape((batch_size,self.machine_seq_len,-1)), # next machine action
+                
                             )
 
     def size(self):
@@ -68,3 +70,4 @@ class BufferEntity(NamedTuple):
     dones: torch.Tensor
     next_states: torch.Tensor
     next_state_masks: torch.Tensor
+    next_machine_actions: torch.Tensor

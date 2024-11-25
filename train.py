@@ -75,7 +75,7 @@ class Train():
                 next_state,next_state_mask = state_norm.job_padding(next_state)
                 next_machine_action,action_mask = state_norm.machine_action_padding(next_machine_action,next_action_mask)
                 # 存储经验
-                replay_buffer.add((state,state_mask,machine_action,reward,done,next_state,next_state_mask))
+                replay_buffer.add((state,state_mask,machine_action,reward,done,next_state,next_state_mask,next_machine_action))
                 state,state_mask,machine_action,action_mask = next_state,next_state_mask,next_machine_action,next_action_mask
                 step_done += 1
 

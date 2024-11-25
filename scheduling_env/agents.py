@@ -118,7 +118,7 @@ class Agent():
         dones = transition.dones
         next_states = transition.next_states
         next_state_masks = transition.next_state_masks.to(torch.bool)
-
+        next_machine_actions = transition.next_machine_actions
         print('states:',states.shape)
         print('state_masks:',state_masks.shape)
         print('machine_actions:',machine_actions.shape)
@@ -126,34 +126,47 @@ class Agent():
         print('dones:',dones.shape)
         print('next_states:',next_states.shape)
         print('next_state_masks:',next_state_masks.shape)
+        print('next_machine_actions:',next_machine_actions.shape)
 
         pass
         mem = self.main_net.encoder(states,state_masks)
-<<<<<<< HEAD
         machine_actions_copy = machine_actions.clone()
         machine_actions_copy[:,:,self.machine_dim:] = 0
         key_padding_mask = torch.ones(machine_actions.size(0),self.machine_seq_len,dtype=torch.bool).to(self.device)
+        Q_all = torch.zeros(machine_actions.size(0),1).to(self.device)
         for i in range(self.machine_seq_len):
             key_padding_mask[:,i] = False
             q_values = self.main_net(mem,machine_actions_copy,key_padding_mask)
-            q_values = q_values[machine_actions[:,i,self.machine_dim:].to(torch.bool)].unsqueeze(1)
-            pass
-            
-=======
-        for i in range(self.machine_seq_len):
-            q_vlaues = self.main_net(mem,machine_actions[:,i,:])
-        
-        q_values = self.actor(machine_states,job_states,machine_masks,job_masks).squeeze(1)  # [batch_size,1,action_dim]->[batch_size,action_dim]
-        q_values = q_values.gather(1, actions)  # [batch_size,1]
->>>>>>> d448acc22b31b22ebcd6783f2400f796bd298978
-        with torch.no_grad():
-            next_q_values = self.target_actor(next_machine_states,next_job_states,next_machine_masks,next_job_masks).squeeze(1)  # [batch_size,1,action_dim] ->[batch_size,action_dim]
-            next_q_values[~next_action_masks] = -float('inf')
-            max_nqv,_ = torch.max(next_q_values,dim=1)
+            machine_actions_copy[:,i] = machine_actions[:,i]
+            # 如果当前时间步 `mask` 全为 0，为默认值（如零）；否则取值
+            current_mask = machine_actions[:,i,self.machine_dim:].to(torch.bool)
+            selected_values = torch.where(
+                current_mask.any(dim=-1, keepdim=True),  # 判断 mask 是否全为 0
+                q_values.masked_select(current_mask).unsqueeze(-1),  # 按 mask 取值
+                torch.zeros(q_values.size(0), 1).to(self.device)  # 填充默认值
+            )
+            print('selected_values:',selected_values)
+            Q_all += selected_values
+        # way 1:对Q_all进行Loss
+        # way 2:对Q_all的均值进行Loss
 
-            max_nqv = max_nqv.view(-1,1)
-            q_targets = rewards + self.gamma * max_nqv * (1 - dones)
-        dqn_loss = F.smooth_l1_loss(q_values, q_targets)
+        with torch.no_grad():
+            next_mem = self.target_net.encoder(next_states,next_state_masks)
+            next_machine_actions_copy = next_machine_actions.clone()
+            next_machine_actions_copy[:,:,self.machine_dim:] = 0
+            next_key_padding_mask = torch.ones(machine_actions.size(0),self.machine_seq_len,dtype=torch.bool).to(self.device)
+            next_Q_all = torch.zeros(machine_actions.size(0),1).to(self.device)
+            for i in range(self.machine_seq_len):
+                next_key_padding_mask[:,i] = False
+                next_q_values = self.target_net(next_mem,next_machine_actions_copy,next_key_padding_mask)
+                next_machine_actions_copy[:,i] = next_machine_actions[:,i]
+                max_values,_ = torch.max(next_q_values, dim=-1, keepdim=True).values
+                is_all_zero = torch.all(next_machine_actions[:,i]==0,dim=-1,keepdim=True)
+                max_values = torch.where(is_all_zero,torch.tensor(0.0,device=self.device),max_values)
+
+                next_Q_all += max_values
+            Q_targets = rewards + self.gamma * next_Q_all * (1 - dones)
+        dqn_loss = F.smooth_l1_loss(Q_all, Q_targets)
 
         self.optimizer.zero_grad()
         dqn_loss.backward()
@@ -161,11 +174,11 @@ class Agent():
             self.loss += dqn_loss
         torch.nn.utils.clip_grad_value_(self.actor.parameters(), 200)
         self.optimizer.step()
-        actor_state_dict = self.actor.state_dict()
-        target_state_dict = self.target_actor.state_dict()
+        actor_state_dict = self.main_net.state_dict()
+        target_state_dict = self.target_net.state_dict()
         for key in actor_state_dict:
             target_state_dict[key] = actor_state_dict[key] * self.tau + target_state_dict[key] * (1 - self.tau)
-        self.target_actor.load_state_dict(target_state_dict)
+        self.target_net.load_state_dict(target_state_dict)
         if (self.count + 1) % 1000 == 0:
             print('loss:',self.loss.item()/1000)
             self.loss = 0
