@@ -95,7 +95,18 @@ class Job(Node):
         
         if self._t_processed == self._t_process:        #当前工序加工完成
             self.unload_machine()
-            
+    def current_progress_remaining_time(self):
+        """获取当前工序剩余加工时间"""
+        if self._status == JobStatus.COMPLETED:
+            raise ValueError('job is completed')
+        reminder = 0
+        if self._status == JobStatus.IDLE:
+            reminder = min(self._process_list[self._progress-1].values())
+        elif self._status == JobStatus.RUNNING:
+            reminder = self._t_process - self._t_processed
+        if reminder <= 0:
+            raise ValueError('reminder is negative or zero')
+        return reminder    
       
 
     #获取job state 编码
@@ -107,7 +118,7 @@ class Job(Node):
 
         p1 = [cp_dict.get(i+1,0) if self._status == JobStatus.IDLE else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]
         p2 = [self._process_list[self._progress].get(i+1,0) if self._progress < self._process_num else 0 for i in range(machine_nums)]
-        job_state += p1
+        job_state += p1 + p2
         return job_state
     
     @property

@@ -3,8 +3,17 @@ import matplotlib.pyplot as plt
 import json
 import math
 import numpy as np
+def moving_average(a, window_size):
+    cumulative_sum = np.cumsum(np.insert(a, 0, 0)) 
+    middle = (cumulative_sum[window_size:] - cumulative_sum[:-window_size]) / window_size
+    r = np.arange(1, window_size-1, 2)
+    begin = np.cumsum(a[:window_size-1])[::2] / r
+    end = (np.cumsum(a[:-window_size:-1])[::2] / r)[::-1]
+    print('ddxl')
+    return np.concatenate((begin, middle, end))
 
-filename = 'record2'
+
+filename = 'record2r3'
 with open(f'logs/{filename}.json','r') as f:
     record = json.load(f)
 with open('logs/record_sjf2.json','r') as f:
@@ -25,11 +34,12 @@ for i,name in enumerate (jobs_name):
     correlation = correlation_matrix[0, 1]
     plt.figure(i)
     plt.title(name+' '+filename + ' ' + str(correlation)+' '+str(min(makespan))+ ' '+str(sjf_makepan))
-    plt.plot(range(len(makespan)),makespan,c='blue')
+    avg_makespan = moving_average(makespan,90)
+    plt.plot(range(len(avg_makespan)),avg_makespan,c='blue')
     plt.plot(range(len(makespan)),[sjf_makepan for _ in range(len(makespan))],c='red')
     print(makespan)
-    plt.savefig(f'logs/imgs/{name}u.png')
+    plt.savefig(f'logs/imgs/{name}.png')
     print(f"Pearson correlation coefficient: {name}", correlation)
     plt.figure(i+100)
     plt.plot(range(len(reward)),reward)
-    plt.savefig(f'logs/imgs/{name}u_reward.png')
+    plt.savefig(f'logs/imgs/{name}_reward.png')

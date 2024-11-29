@@ -12,8 +12,7 @@ class ReplayBuffer:
         self.buffer_size = capacity
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-        self.entity_size = state_seq_len*state_dim*2 + state_seq_len*2 + machine_action_dim*machine_seq_len*2  + 1 + 1
-
+        self.entity_size = state_seq_len*state_dim*2 + state_seq_len*2 + machine_action_dim*machine_seq_len*2  + 1 + 1 + machine_seq_len*state_seq_len
         self.buffer = torch.zeros((capacity,self.entity_size)).to(self.device)
         self.state_seq_len = state_seq_len
         self.machine_seq_len = machine_seq_len
@@ -23,7 +22,7 @@ class ReplayBuffer:
     def add(self,data):
         """
         
-        state,state_mask,machine_action,reward,done,next_state,next_state_mask,next_machine_action
+        state,state_mask,machine_action,reward,done,next_state,next_state_mask,next_machine_action,next_action_mask
 
         """
         self.buffer[self.pos] *= 0
@@ -49,7 +48,7 @@ class ReplayBuffer:
                             ten[:, p[5]: p[6]].reshape((batch_size,self.state_seq_len,-1)), # next_state
                             ten[:, p[6]: p[7]],                                              # next_state_mask
                             ten[:, p[7]: p[8]].reshape((batch_size,self.machine_seq_len,-1)), # next machine action
-                
+                            ten[:, p[8]: p[9]].reshape((batch_size,self.machine_seq_len,-1))                                              # next action mask
                             )
 
     def size(self):
@@ -71,3 +70,4 @@ class BufferEntity(NamedTuple):
     next_states: torch.Tensor
     next_state_masks: torch.Tensor
     next_machine_actions: torch.Tensor
+    next_action_masks: torch.Tensor

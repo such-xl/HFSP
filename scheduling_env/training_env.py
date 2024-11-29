@@ -60,9 +60,10 @@ class TrainingEnv():
                 if busy_job.is_completed(): # 所有工序加工完成
                     self._uncompleted_jobs.disengage_node(busy_job)
                     self._completed_jobs.append(busy_job)
+                busy_machine.update_begin_idle_time(self._time_step+min_run_timestep) # 更新开始等待时间
                 self._busy_machines.disengage_node(busy_machine)
                 self._idle_machines.append(busy_machine)
-            
+
             elif busy_machine.is_fault(): #机器故障,暂时不实现
                 self._busy_machines.disengage_node(busy_machine)
                 self._faulty_machines.append(busy_machine)
@@ -123,6 +124,7 @@ class TrainingEnv():
         for decision_machine,action in  zip(self._decision_machines,actions):
             if action == self._action_dim-1:
                 continue
+            decision_machine.update_end_idle_time(self._time_step) # 更新结束等待时间
             self._idle_machines.disengage_node(decision_machine)
             self._busy_machines.append(decision_machine)
             decision_machine.load_job(self._job_list[action],self._time_step)
@@ -133,9 +135,15 @@ class TrainingEnv():
             job_list.append(job)
             job = job.next
         self._job_list = job_list
-        reward = 0
+        reward = 0 if not done else -self.time_step*0.01
         state,machine_action,action_mask = self.get_state()
         return  state,machine_action,action_mask,reward,done
+        if self._reward_type == 0:
+            reward = self.reward_func_0(scale_factor,done)
+        elif self._reward_type == 1:
+            reward = self.reward_func_1()
+        elif self._reward_type == 2:
+            reward = self.reward_func_2(scale_factor,actions)
     
     def reward_func_0(self,scale_factor,done):
         """
@@ -155,29 +163,31 @@ class TrainingEnv():
                 count +=1
             in_progress_job = in_progress_job.next
         return -delay_rate/count if count else 0
-    def reward_func_2(self,scale_factor):
+    def reward_func_2(self,scale_factor,actions):
         """
             机器平均空闲率
         """
-        idle_agents = self._idle_agents.head
-        count_agent,idle_rate = 0,0
-        while idle_agents:
-            idle_rate += idle_agents.get_idle_time()
-            count_agent += 1
-            idle_agents = idle_agents.next
-        r1 =  -idle_rate/count_agent*scale_factor if count_agent else 0
-        in_progress_job,pending_job =  self._in_progress_jobs.head,self._pending_jobs.head
-        count_job,latest_finnish = 0,0
-        while pending_job:
-            latest_finnish = max(latest_finnish,pending_job.current_progress_need_time())
-            count_job += 1
-            pending_job = pending_job.next
-        while in_progress_job:
-            latest_finnish = max(latest_finnish,in_progress_job.current_progress_need_time())
-            count_job += 1
-            in_progress_job = in_progress_job.next
-        r2 = -math.log(latest_finnish*0.01+1) if latest_finnish else 0
-        return (r1+r2)/2
+        idle_machine:Machine = self._idle_machines.head
+        busy_machine:Machine = self._busy_machines.head
+
+        idle_rate = 0
+        while idle_machine:
+            idle_rate += idle_machine.get_idle_time(self.time_step)
+            idle_machine = idle_machine.next
+        while busy_machine:
+            idle_rate += busy_machine.get_idle_time(self.time_step)
+            busy_machine = busy_machine.next
+        machine_counts = self._idle_machines.length + self._busy_machines.length
+        r1 = -idle_rate/machine_counts*scale_factor if machine_counts else 0
+        uncompleted_job:Job = self._uncompleted_jobs.head
+        latest_finnish = 0
+        while uncompleted_job:
+            latest_finnish = max(latest_finnish,uncompleted_job.current_progress_remaining_time())
+            uncompleted_job = uncompleted_job.next
+
+        r2 = -math.log(latest_finnish*scale_factor+1) if latest_finnish else 0
+        r3 = -actions.count(self._action_dim-1)/len(actions)
+        return (r1*0.2+r2*0.7+r3*0.1) + 0.5
     @property
     def action_space(self):
         return self._action_space

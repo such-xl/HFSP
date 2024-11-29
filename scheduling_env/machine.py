@@ -17,7 +17,9 @@ class Machine(Node):
         self._status = MachineStatus.IDLE
         self._job = None
         self._bin_code = self.get_bin_code()
-
+        self._begin_idle_time = 0 # 开始等待时间
+        self._end_idle_time = 0 # 结束等待时间
+        self._idle_time = 0 # 空闲时间
     def get_bin_code(self):
         binary_str = bin(self._id)[2:]
         binary_list = [int(digit) for digit in binary_str]
@@ -41,7 +43,7 @@ class Machine(Node):
             raise ValueError('machine is not idle')
         if self._job:
             raise ValueError('machine has job')
-        
+        self._end_time = time_step # 更新结束等待时间
         self._job = job
         job.load_to_machine(self,time_step)
         self._status = MachineStatus.RUNNING
@@ -51,7 +53,6 @@ class Machine(Node):
             raise ValueError('machine is not running')
         if not self._job:
             raise ValueError('machine has no job')
-        
         self._job = None
         self._status = MachineStatus.IDLE
     def run(self,min_run_timestep):
@@ -62,6 +63,24 @@ class Machine(Node):
 
             self.unload_job()
 
+    def update_end_idle_time(self,time_step):
+        """更新结束等待时间"""
+        self._end_idle_time = time_step
+    def update_begin_idle_time(self,time_step):
+        """更新开始等待时间"""
+        self._begin_idle_time = time_step
+    def get_idle_time(self,time_step):
+        """获取空闲时间"""
+        if self._status == MachineStatus.FAULT:
+            raise ValueError('machine is fault')
+        idle_time = 0
+        if self._status == MachineStatus.RUNNING:
+            idle_time = self._end_idle_time - self._begin_idle_time
+        elif self._status == MachineStatus.IDLE:
+            idle_time = time_step - self._begin_idle_time
+        if idle_time < 0:
+            raise ValueError('idle time is negative')
+        return idle_time
     @property
     def id(self):
         return self._id
@@ -73,7 +92,8 @@ class Machine(Node):
         return self._job
     @job.setter
     def job(self,job):
-        self._job = job
+        self._job = job  
+
 
 class MachineList(DoublyLinkList):
     def __init__(self,machine_num) -> None:

@@ -51,31 +51,30 @@ class Train():
         for name in jobs_name:
             record_reward[name] = []
             record_makespan[name] = []
-
+        step_done = 0
         for i in range(train_params['num_episodes']): #episodes
             start_time = time.time()
             print('episode:',i)
             G = 0
             #Generate an FJSS instance from teh emulating environment
-            job_name = random.choice(jobs_name)
-            # job_name = random.choice(['ela01.fjs'])
+            # job_name = random.choice(jobs_name)
+            job_name = random.choice(['rla36.fjs'])
             job_path = train_data_path+job_name
             state,machine_action,action_mask = env.reset(jobs_path=job_path)
             state,state_mask = state_norm.job_padding(state)
             machine_action,action_mask = state_norm.machine_action_padding(machine_action,action_mask)
             done = False
             scale_factor = train_params['scale_factor']
-            step_done = 0
             while not done:
                 # 采样一个动作
                 actions,machine_action = agent.take_action(state,state_mask,machine_action,action_mask,step_done)
                 # 执行动作
                 next_state,next_machine_action,next_action_mask,reward,done = env.step(actions,machine_action,scale_factor)
-
+                G += reward
                 next_state,next_state_mask = state_norm.job_padding(next_state)
-                next_machine_action,action_mask = state_norm.machine_action_padding(next_machine_action,next_action_mask)
+                next_machine_action,next_action_mask = state_norm.machine_action_padding(next_machine_action,next_action_mask)
                 # 存储经验
-                replay_buffer.add((state,state_mask,machine_action,reward,done,next_state,next_state_mask,next_machine_action))
+                replay_buffer.add((state,state_mask,machine_action,reward,done,next_state,next_state_mask,next_machine_action,next_action_mask))
                 state,state_mask,machine_action,action_mask = next_state,next_state_mask,next_machine_action,next_action_mask
                 step_done += 1
 
@@ -87,12 +86,12 @@ class Train():
             record_reward[job_name].append(G) 
             print('=================================')
             print(job_name)
-            print('time:', env.time_step, '||\ttimestep/s:', env.time_step / (time.time() - start_time))
+            print('time:', env.time_step,'||G: ',G, '||\ttimestep/s:', env.time_step / (time.time() - start_time))
             print('=================================')
 
         
-        agent.save_model(f"models/model{train_params['reward_type']}.pth")
-        with open(f"logs/record{train_params['reward_type']}.json", 'w') as json_file:
+        agent.save_model(f"models/model{train_params['reward_type']}2s.pth")
+        with open(f"logs/record{train_params['reward_type']}2s.json", 'w') as json_file:
             record = {}
             record['makespan'] = record_makespan
             record['reward'] = record_reward
@@ -101,7 +100,7 @@ class Train():
             print(f"model saved named model{train_params['reward_type']}.pth")
 
 model_params = {
-    "state_dim": 18,
+    "state_dim": 34,
     "machine_dim": 4,
     "action_dim": 32,
     "num_heads": 1,
@@ -110,20 +109,20 @@ model_params = {
     "dropout": 0.1,
 }
 train_params = {
-    "num_episodes": 100,
-    "batch_size": 3,
-    "learning_rate": 1e-6,
+    "num_episodes": 5_000,
+    "batch_size": 512,
+    "learning_rate": 2e-6,
     "epsilon_start": 1,
     "epsilon_end": 0.005,
-    "epsilon_decay": 500,
+    "epsilon_decay": 50_000,
     "gamma": 1,
-    "tau": 0.005,
+    "tau": 0.05,
     "target_update": 1000,
     "buffer_size": 10_000,
-    "minimal_size": 1000,
+    "minimal_size": 1_000,
     "scale_factor": 0.01,
     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
-    "reward_type": 0,
+    "reward_type": 2,
 }
 trainer = Train()
 trainer.train_model(model_params,train_params)
