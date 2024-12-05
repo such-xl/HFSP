@@ -58,7 +58,7 @@ class Train():
             G = 0
             #Generate an FJSS instance from teh emulating environment
             # job_name = random.choice(jobs_name)
-            job_name = random.choice(['rla36.fjs'])
+            job_name = random.choice(['Mk10.fjs'])
             job_path = train_data_path+job_name
             state,machine_action,action_mask = env.reset(jobs_path=job_path)
             state,state_mask = state_norm.job_padding(state)
@@ -100,8 +100,13 @@ class Train():
             print(f"model saved named model{train_params['reward_type']}.pth")
 
 model_params = {
-    "state_dim": 34,
-    "machine_dim": 4,
+    "state_dim": 1,
+    "machine_dim": 1,
+    "state_embedding_dim": 32,
+    "macihne_embedding_dim": 32,
+    "machine_seq_len": 16,
+    "machine_embedding_dim": 8,
+    "action_embedding_dim": 24,
     "action_dim": 32,
     "num_heads": 1,
     "job_seq_len": 32,
@@ -109,9 +114,9 @@ model_params = {
     "dropout": 0.1,
 }
 train_params = {
-    "num_episodes": 5_000,
+    "num_episodes": 3_000,
     "batch_size": 512,
-    "learning_rate": 2e-6,
+    "learning_rate": 2e-4,
     "epsilon_start": 1,
     "epsilon_end": 0.005,
     "epsilon_decay": 50_000,

@@ -40,12 +40,12 @@ class ReplayBuffer:
         samples_idx = np.random.randint(0, self.size(), size=batch_size)
         ten = self.buffer[samples_idx, :]
         p = self.points
-        return BufferEntity(ten[:,p[0]:p[1]].reshape((batch_size,self.state_seq_len,-1)), # state
+        return BufferEntity(ten[:,p[0]:p[1]].reshape((batch_size,-1)), # state
                             ten[:, p[1]: p[2]],                                             # state_mask
                             ten[:, p[2]: p[3]].reshape((batch_size,self.machine_seq_len,-1)), # machine action
                             ten[:, p[3]: p[4]],                                             # reward
                             ten[:, p[4]: p[5]],                                              # done
-                            ten[:, p[5]: p[6]].reshape((batch_size,self.state_seq_len,-1)), # next_state
+                            ten[:, p[5]: p[6]].reshape((batch_size,-1)), # next_state
                             ten[:, p[6]: p[7]],                                              # next_state_mask
                             ten[:, p[7]: p[8]].reshape((batch_size,self.machine_seq_len,-1)), # next machine action
                             ten[:, p[8]: p[9]].reshape((batch_size,self.machine_seq_len,-1))                                              # next action mask
@@ -57,8 +57,8 @@ class ReplayBuffer:
     def to_torch(self, array: np.ndarray, copy: bool = True) -> torch.Tensor:
         with torch.no_grad():
             if copy:
-                return torch.tensor(array, device=self.device, dtype=torch.float)
-            return torch.as_tensor(array, device=self.device, dtype=torch.float)
+                return torch.tensor(array, device=self.device)
+            return torch.as_tensor(array, device=self.device)
 
 
 class BufferEntity(NamedTuple):

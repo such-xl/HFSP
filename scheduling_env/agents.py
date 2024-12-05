@@ -33,15 +33,23 @@ class Agent():
         
         self.device = train_params['device']
         self.main_net = D3QN(
-            state_dim = model_params['state_dim'],
-            x_dim = model_params['machine_dim'] + model_params['action_dim'],
+            state_seq_len = model_params['job_seq_len'],
+            embedding_dim = model_params['state_embedding_dim'],
+            num_m_embed=model_params['machine_seq_len'],
+            m_embedding=model_params['machine_embedding_dim'],
+            num_a_embed=model_params['job_seq_len'],
+            a_embedding=model_params['action_embedding_dim'],
             action_dim = model_params['action_dim'],
             num_heads = model_params['num_heads'],
             dropout =  model_params['dropout'],
         ).to(self.device)
         self.target_net = D3QN(
-            state_dim = model_params['state_dim'],
-            x_dim = model_params['machine_dim'] + model_params['action_dim'],
+            state_seq_len = model_params['job_seq_len'],
+            embedding_dim = model_params['state_embedding_dim'],
+            num_m_embed=model_params['machine_seq_len'],
+            m_embedding=model_params['machine_embedding_dim'],
+            num_a_embed=model_params['job_seq_len'],
+            a_embedding=model_params['action_embedding_dim'],
             action_dim = model_params['action_dim'],
             num_heads = model_params['num_heads'],
             dropout =  model_params['dropout'],
@@ -76,17 +84,17 @@ class Agent():
                 available_actions = np.where(action_mask_copy[i])[0]
                 action = np.random.choice(available_actions)
                 actions.append(action)
-                machine_action[i][action+self.machine_dim] = 1
+                machine_action[i][1] = action
                 if action != self.action_dim-1: # 非空闲动作
                    action_mask_copy[:,action] = False  # 其他智能体不再可选该动作
                 i += 1
         else:
             with torch.no_grad():
-                state = torch.as_tensor(state, dtype=torch.float).to(self.device).unsqueeze(0)
+                state = torch.as_tensor(state, dtype=torch.int64).to(self.device).unsqueeze(0)
                 state_mask = torch.as_tensor(state_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
 
                 mem = self.main_net.encoder(state,state_mask)
-                machine_action = torch.as_tensor(machine_action, dtype=torch.float).to(self.device).unsqueeze(0)
+                machine_action = torch.as_tensor(machine_action, dtype=torch.int64).to(self.device).unsqueeze(0)
                 action_mask_copy = np.copy(action_mask)
                 action_mask_copy = torch.as_tensor(action_mask_copy,dtype=torch.bool).to(self.device)
                 machine_action_mask = torch.ones(1,self.machine_seq_len,dtype=torch.bool).to(self.device)
@@ -104,9 +112,9 @@ class Agent():
                     # prob = q_value/np.sum(q_value)
                     # action = np.random.choice(self.action_dim,p=prob)
                     _,action = torch.max(q_value,dim=0)
-                    machine_action[0][i][action+self.machine_dim] = 1
+                    machine_action[0][i][1] = action
                     action = action.cpu().item()
-                    if action != 31: # 非选择空闲动作
+                    if action != self.action_dim-1: # 非选择空闲动作
                         action_mask_copy[:,action] = False
                     actions.append(action)
                     i+=1
@@ -114,14 +122,14 @@ class Agent():
         return actions,machine_action
 
     def update(self, transition):
-        states = transition.states
+        states = transition.states.to(torch.int64)
         state_masks = transition.state_masks.to(torch.bool)
-        machine_actions = transition.machine_actions
+        machine_actions = transition.machine_actions.to(torch.int64)
         rewards = transition.rewards
         dones = transition.dones
-        next_states = transition.next_states
+        next_states = transition.next_states.to(torch.int64)
         next_state_masks = transition.next_state_masks.to(torch.bool)
-        next_machine_actions = transition.next_machine_actions
+        next_machine_actions = transition.next_machine_actions.to(torch.int64)
         next_action_masks = transition.next_action_masks.to(torch.bool)
         # print('states:',states.shape)
         # print('state_masks:',state_masks.shape)
@@ -143,12 +151,15 @@ class Agent():
                 break
             key_padding_mask[:,i] = False
             q_values = self.main_net(mem,machine_actions_copy,key_padding_mask)
+            machine_actions_copy = machine_actions_copy.clone()
             machine_actions_copy[:,i] = machine_actions[:,i]
             # 如果当前时间步 `mask` 全为 0，为默认值（如零）；否则取值
-            current_mask = machine_actions[:,i,self.machine_dim:].to(torch.bool)
+            current_mask = machine_actions[:,i,1:]
             mask_any = current_mask.any(dim=-1, keepdim=True)
-            q = torch.zeros(q_values.size(0), 1).to(self.device)
-            q[mask_any] = q_values[current_mask]
+            # q = torch.zeros(q_values.size(0), 1).to(self.device)
+            # q[mask_any] = q_values.gather(1,current_mask)[mask_any]
+            q = q_values.gather(1,current_mask)
+            q = torch.where(mask_any,q,torch.zeros_like(q))
             Q_all += q
         # way 1:对Q_all进行Loss
         # way 2:对Q_all的均值进行Loss
@@ -157,28 +168,28 @@ class Agent():
             next_mem = self.target_net.encoder(next_states,next_state_masks)
             next_key_padding_mask = torch.ones(machine_actions.size(0),self.machine_seq_len,dtype=torch.bool).to(self.device)
             next_Q_all = torch.zeros(machine_actions.size(0),1).to(self.device)
+            next_machine_actions_copy = next_machine_actions.clone()
+            next_machine_actions_copy[:,:,self.machine_dim:] = 0
             for i in range(self.machine_seq_len):
                 if not next_machine_actions[:,i].any():
                     break
                 next_key_padding_mask[:,i] = False
-                next_q_values = self.target_net(next_mem,next_machine_actions,next_key_padding_mask)
-                current_action_mask = next_action_masks[:,i]
-                next_q_values[~current_action_mask] = -float('inf')
-                max_values,actions = next_q_values.max(dim=-1,keepdim=True)
-
-                actions = actions.squeeze(-1)+self.machine_dim
-                next_machine_actions[torch.arange(next_machine_actions.size(0)),i,actions] = 1
-
-                # is_all_zero = torch.all(next_machine_actions[:,i]==0,dim=-1,keepdim=True)
-                # max_values = torch.where(is_all_zero,torch.tensor(0.0,device=self.device),max_values)
-                max_values = torch.where(max_values == -float('inf'), torch.tensor(0.0), max_values)
-                next_Q_all += max_values
+                next_q_values = self.target_net(next_mem,next_machine_actions_copy,next_key_padding_mask)
+                next_machine_actions_copy[:,i] = next_machine_actions[:,i]
+                actions = next_machine_actions[:,i,1:]
+                max_values = next_q_values.gather(1,actions)
+                mask_any = next_machine_actions[:,i,:].any(dim=-1, keepdim=True)
+                next_q = torch.zeros(next_q_values.size(0), 1).to(self.device)
+                next_q[mask_any] = max_values[mask_any]
+                next_Q_all += next_q
             Q_targets = rewards + self.gamma * next_Q_all * (1 - dones)
         # print(Q_all)
         # print(Q_targets)
-        dqn_loss = F.mse_loss(Q_all, Q_targets)
+        # dqn_loss = F.mse_loss(Q_all, Q_targets)
+        dqn_loss = F.smooth_l1_loss(Q_all, Q_targets)
         # print('loss:',dqn_loss.item())
         self.optimizer.zero_grad()
+        torch.autograd.set_detect_anomaly(True)
         dqn_loss.backward()
         with torch.no_grad():
             self.loss += dqn_loss

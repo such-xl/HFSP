@@ -110,13 +110,15 @@ class TrainingEnv():
         return state,machine_action,action_mask
     def get_state(self):
         uncompleted_job:Job = self._uncompleted_jobs.head
-        state,machine_action = [],[x.get_state_encoding(4) for x in self._decision_machines]
+        state,machine_action = [],[[x.id,0] for x in self._decision_machines]
         action_mask = [[] for i in range(len(self._decision_machines))]
         while uncompleted_job:
-            state.append(uncompleted_job.get_state_encoding(self._max_machine_num))
+
+            state.append(uncompleted_job.id)
             for i,machines in enumerate(self._decision_machines):
                 action_mask[i].append(True if uncompleted_job.is_wating_for_machine() and uncompleted_job.match_machine(machines.id) else False)
             uncompleted_job = uncompleted_job.next
+
         
         return state,machine_action,action_mask
          

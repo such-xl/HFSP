@@ -34,7 +34,7 @@ for i,name in enumerate (jobs_name):
     correlation = correlation_matrix[0, 1]
     plt.figure(i)
     plt.title(name+' '+filename + ' ' + str(correlation)+' '+str(min(makespan))+ ' '+str(sjf_makepan))
-    avg_makespan = moving_average(makespan,90)
+    avg_makespan = moving_average(makespan,9)
     plt.plot(range(len(avg_makespan)),avg_makespan,c='blue')
     plt.plot(range(len(makespan)),[sjf_makepan for _ in range(len(makespan))],c='red')
     print(makespan)

@@ -57,7 +57,6 @@ class Job(Node):
         self._machine = machine
         self._t_processed = 0
         self._status = JobStatus.RUNNING
-
     def unload_machine(self):
         """将job从machine卸载"""
         if self._status != JobStatus.RUNNING:
@@ -108,7 +107,13 @@ class Job(Node):
             raise ValueError('reminder is negative or zero')
         return reminder    
       
-
+    def get_static_state(self,machine_nums):
+        # 
+        static_state = [[0 for _ in range(machine_nums)] for __ in range(self._process_num)]
+        for i,dicts in enumerate(self._process_list):
+            for k,v in dicts.items():
+                static_state[i][k-1] = v
+        self._static_state = static_state
     #获取job state 编码
     def get_state_encoding(self,machine_nums):
                          
