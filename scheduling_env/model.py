@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 class PositionalEncoding(nn.Module):
     def __init__(self):
         super().__init__()
@@ -101,5 +101,54 @@ class D3QN(nn.Module):
         V = self.gule(self.V_net(output))
         Q = V + A - A.mean(dim=-1,keepdim=True)
         return Q
-
     
+
+
+# class RLNet(nn.Module):
+#     def __init__(self, num_machines, num_operations, channels=1):
+#         """
+#         初始化 CNN 网络
+#         :param num_machines: 机器数量（行数）
+#         :param num_operations: 工序数量（列数）
+#         :param channels: 输入通道数（默认为 1）
+#         """
+#         super(RLNet, self).__init__()
+#         self.num_machines = num_machines
+#         self.num_operations = num_operations
+#         # 卷积层
+#         self.conv1 = nn.Conv2d(channels, 32, kernel_size=(3, 3), stride=1, padding=1)
+#         self.conv2 = nn.Conv2d(32, 64, kernel_size=(3, 3), stride=1, padding=1)
+#         # 池化层
+#         self.pool = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+#         # 全连接层
+#         flattened_size = (num_machines // 2) * (num_operations // 2) * 64
+#         self.fc_shared = nn.Linear(flattened_size, 128)
+        
+#         # 策略分支
+#         self.policy_fc = nn.Linear(128, num_operations * num_machines)
+        
+#         # 价值分支
+#         self.value_fc = nn.Linear(128, 1)
+
+#     def forward(self, x):
+#         """
+#         前向传播
+#         :param x: 输入张量，形状为 (batch_size, channels, num_machines, num_operations)
+#         :return: 策略分布和状态价值
+#         """
+#         # 特征提取部分
+#         x = self.pool(F.relu(self.conv1(x)))
+#         x = self.pool(F.relu(self.conv2(x)))
+#         x = torch.flatten(x, start_dim=1)  # 展平
+        
+#         # 共享特征部分
+#         shared = F.relu(self.fc_shared(x))
+        
+#         # 策略输出
+#         policy_logits = self.policy_fc(shared)
+#         policy = F.softmax(policy_logits.view(-1, self.num_operations, self.num_machines), dim=-1)
+        
+#         # 价值输出
+#         value = self.value_fc(shared)
+        
+#         return policy, value
