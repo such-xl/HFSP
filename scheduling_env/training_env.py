@@ -5,8 +5,10 @@
 '''
 
 import math
+import random
 from .job import Job,JobList,JobStatus
 from .machine import Machine,MachineList,MachineStatus
+
 class TrainingEnv():
     # 初始化环境
     def __init__(self,action_dim,reward_type,max_machine_num,max_job_num) -> None:
@@ -16,32 +18,49 @@ class TrainingEnv():
         self._job_num  = 0         #总作业数
         self._max_machine_num = max_machine_num
         self._max_job_num = max_job_num
-        self._completed_jobs = JobList()
-        self._uncompleted_jobs = JobList()
-        self._busy_machines = MachineList(0)
-        self._faulty_machines = MachineList(0)
-        self._idle_machines:MachineList = None
         self._draw_data = None        #画图信息
         self._time_step = 0
         self._reward_type = reward_type
-        self._decision_machines:list[Machine] = None # 某時刻参与决策的所有机器
-        self._job_list:list[Job] = None # 某时刻未完成的作业列表
-
+        self._job_list:list[Job] = None 
+        self._machines = None
+        self._jobs:JobList = JobList()
+        self._current_machine = None
     def get_jobs_from_file(self, jobs_path:str):
-        self._machine_num = self._uncompleted_jobs.fetch_jobs_from_file(jobs_path)
-        self._job_num = self._uncompleted_jobs.length
-        self._idle_machines = MachineList(self._machine_num)
-
-
+        self._machine_num = self._jobs.fetch_jobs_from_file(jobs_path)
+        self._job_num = self._jobs.length
+        self._machines = MachineList(self._machine_num)
+        machine:Machine = self._machines.head
+        self._machine_list = []
+        while machine:
+            self._machine_list.append(machine)
+            machine = machine.next
 
     def is_decision_machine(self,agent_id):
         """是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策"""
-        uncompleted_job :Job = self._uncompleted_jobs.head
-        while uncompleted_job:
-            if uncompleted_job.is_wating_for_machine() and uncompleted_job.match_machine(agent_id):
+        job :Job = self._jobs.head
+        while job:
+            if job.is_wating_for_machine() and job.match_machine(agent_id):
                 return True
-            uncompleted_job = uncompleted_job.next
+            job = job.next
         return False
+    def get_decision_machines(self):
+        """获取需要做出决策的agent"""
+        decision_machines = []
+        machine:Machine = self._machines.head
+        while machine:
+            if machine.is_idle() and self.is_decision_machine(machine.id):
+                decision_machines.append(machine)
+            machine = machine.next
+        return decision_machines
+    def execute_action(self,machine,action):
+        """
+            执行动作
+        """
+        if action == self._action_dim - 1:
+            return None
+        machine.load_job(self._job_list[action],self._time_step)
+        return self.get_state()
+
     def run(self):
         """
             所有忙碌agent和job更新一个time_step,使得必产生空闲机器
@@ -49,41 +68,25 @@ class TrainingEnv():
         """
         # 更新one timestep时序
         min_run_timestep = 1
-        busy_machine:Machine = self._busy_machines.head
-        while busy_machine:
-            busy_job:Job = busy_machine.job
-            busy_machine.run(min_run_timestep)
-            next_busy_machine = busy_machine.next
-
-            if busy_machine.is_idle() : #机器空闲, 代表工序加工完成
-
-                if busy_job.is_completed(): # 所有工序加工完成
-                    self._uncompleted_jobs.disengage_node(busy_job)
-                    self._completed_jobs.append(busy_job)
-                busy_machine.update_begin_idle_time(self._time_step+min_run_timestep) # 更新开始等待时间
-                self._busy_machines.disengage_node(busy_machine)
-                self._idle_machines.append(busy_machine)
-
-            elif busy_machine.is_fault(): #机器故障,暂时不实现
-                self._busy_machines.disengage_node(busy_machine)
-                self._faulty_machines.append(busy_machine)
-            busy_machine = next_busy_machine
+        machine:Machine = self._machines.head
+        while machine:
+            if machine.is_idle():
+                machine = machine.next
+                continue
+            job:Job = machine.job
+            machine.run(min_run_timestep)
+            machine = machine.next
         self._time_step += min_run_timestep
-        
-        done = False
-        if self._uncompleted_jobs.length == 0:    # 所有job完成
-            done = True
-            return done
-        # 获取需要决策的智能体
-        decision_machines = []
-        idle_machine = self._idle_machines.head
-        while idle_machine:
-            if self.is_decision_machine(idle_machine.id):
-                decision_machines.append(idle_machine) 
-            idle_machine = idle_machine.next
-        if len(decision_machines)==0: # 如果没有需要决策的智能体，则继续run
-            return self.run()
-        self._decision_machines = decision_machines
+        done = True
+        job:Job = self._jobs.head
+        while job:
+            if not job.is_completed():
+                done =  False
+                break
+            job = job.next
+
+        while not done and not self.is_any_machine_need_to_decision(): # 没有结束且没有空闲机器，继续
+            done = self.run()
         return done
     def reset(self,jobs_path:str):
         """
@@ -93,60 +96,60 @@ class TrainingEnv():
                 machine_action: 决策机器的状态
                 action_mask: 机器的动作mask
         """
+        self._jobs = JobList()
+        self._machines = None
         self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
-        self._decision_machines,self._job_list = [],[]
-        idle_machine:Machine = self._idle_machines.head
-        while idle_machine:
-            if self.is_decision_machine(idle_machine.id):
-                self._decision_machines.append(idle_machine)
-            idle_machine = idle_machine.next
-        # 重置job_list
-        job:Job = self._uncompleted_jobs.head
+        self._job_list = []
+
+        # job_list
+        job:Job = self._jobs.head
         while job:
             self._job_list.append(job)
             job = job.next
+        decision_machines = self.get_decision_machines()
+        x = random.randint(0,len(decision_machines)-1)
+        self._current_machine = decision_machines[x]
         self._time_step = 0
-        state,machine_action,action_mask = self.get_state()
-        return state,machine_action,action_mask
+        state,action_mask = self.get_state()
+        return state,action_mask
     def get_state(self):
-        uncompleted_job:Job = self._uncompleted_jobs.head
-        state,machine_action = [],[[x.id,0] for x in self._decision_machines]
-        action_mask = [[] for i in range(len(self._decision_machines))]
-        while uncompleted_job:
-
-            state.append(uncompleted_job.id)
-            for i,machines in enumerate(self._decision_machines):
-                action_mask[i].append(True if uncompleted_job.is_wating_for_machine() and uncompleted_job.match_machine(machines.id) else False)
-            uncompleted_job = uncompleted_job.next
-
-        
-        return state,machine_action,action_mask
-         
-    def step(self,actions,machine_action,scale_factor):
-        for decision_machine,action in  zip(self._decision_machines,actions):
-            if action == self._action_dim-1:
-                continue
-            decision_machine.update_end_idle_time(self._time_step) # 更新结束等待时间
-            self._idle_machines.disengage_node(decision_machine)
-            self._busy_machines.append(decision_machine)
-            decision_machine.load_job(self._job_list[action],self._time_step)
-        done = self.run()
-        # 更新job_list
-        job,job_list = self._uncompleted_jobs.head,[]
+        job:Job = self._jobs.head
+        state = []
+        action_mask = []
         while job:
-            job_list.append(job)
+            state.append(job.get_state())
+            action_mask.append([True if job.match_machine(self._current_machine.id) else False])
             job = job.next
-        self._job_list = job_list
-        reward = 0 if not done else -self.time_step*0.01
-        state,machine_action,action_mask = self.get_state()
-        return  state,machine_action,action_mask,reward,done
-        if self._reward_type == 0:
-            reward = self.reward_func_0(scale_factor,done)
-        elif self._reward_type == 1:
-            reward = self.reward_func_1()
-        elif self._reward_type == 2:
-            reward = self.reward_func_2(scale_factor,actions)
+        machine_state = self._current_machine.get_state()
+        machine_state.extend([0 for _ in range(len(state[0])-len(machine_state))])
+        state.append(machine_state)
+        return state,action_mask
     
+    def step(self,action,scale_factor):
+
+        if action == self._action_dim - 1: # 采样空闲动作，不对环境作出改变
+            pass
+        else:
+            self._current_machine.load_job(self._job_list[action],self._time_step)
+        done = False
+        if not self.is_any_machine_need_to_decision(): # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
+            done = self.run()
+        # 要么结束，要么有机器需要采样动作
+        decision_machines = self.get_decision_machines()
+        if decision_machines:
+            x = random.randint(0,len(decision_machines)-1)
+            self._current_machine = decision_machines[x]
+        state,action_mask = self.get_state()
+        reward = -1 if not done else 0
+        return state,action_mask,reward,done 
+
+    def is_any_machine_need_to_decision(self):
+        machine:Machine = self._machines.head
+        while machine:
+            if machine.is_idle() and self.is_decision_machine(machine.id):
+                return True
+            machine = machine.next
+        return False
     def reward_func_0(self,scale_factor,done):
         """
           每步返回-1的奖励
@@ -156,15 +159,14 @@ class TrainingEnv():
         """
             返回in_progress_jobs的相对延迟的率
         """
-        in_progress_job = self._in_progress_jobs.head
         count = 0
         delay_rate = 0
-        while in_progress_job:
-            if in_progress_job._t_processed == 0:
-                delay_rate += in_progress_job.get_delay_ratio()
-                count +=1
-            in_progress_job = in_progress_job.next
-        return -delay_rate/count if count else 0
+        for job in self._job_list:
+            if job.is_completed():
+                continue
+            count += 1
+            delay_rate = max(delay_rate,job.current_progress_remaining_time())
+        return -delay_rate * 0.01 if count else (1/self._time_step)*300
     def reward_func_2(self,scale_factor,actions):
         """
             机器平均空闲率

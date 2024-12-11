@@ -17,7 +17,7 @@ class Train():
 
     def train_model(self,model_params:dict,train_params:dict):
 
-        env = TrainingEnv(
+        env:TrainingEnv = TrainingEnv(
             action_dim = model_params["action_dim"],
             reward_type = train_params["reward_type"],
             max_machine_num = model_params["machine_seq_len"],
@@ -32,7 +32,7 @@ class Train():
             action_dim = model_params["action_dim"],
             scale_factor=train_params["scale_factor"]
         )
-        agent = Agent(model_params,train_params)
+        agent:Agent = Agent(model_params,train_params)
 
 
         replay_buffer = ReplayBuffer(
@@ -60,27 +60,25 @@ class Train():
             # job_name = random.choice(jobs_name)
             job_name = random.choice(['Mk10.fjs'])
             job_path = train_data_path+job_name
-            state,machine_action,action_mask = env.reset(jobs_path=job_path)
-            state,state_mask = state_norm.job_padding(state)
-            machine_action,action_mask = state_norm.machine_action_padding(machine_action,action_mask)
+            state,action_mask= env.reset(jobs_path=job_path)
             done = False
             scale_factor = train_params['scale_factor']
             while not done:
                 # 采样一个动作
-                actions,machine_action = agent.take_action(state,state_mask,machine_action,action_mask,step_done)
+                actions = agent.take_action(state,action_mask,step_done)
                 # 执行动作
-                next_state,next_machine_action,next_action_mask,reward,done = env.step(actions,machine_action,scale_factor)
+                next_state,next_action_mask,reward,done = env.step(actions,scale_factor)
                 G += reward
-                next_state,next_state_mask = state_norm.job_padding(next_state)
-                next_machine_action,next_action_mask = state_norm.machine_action_padding(next_machine_action,next_action_mask)
                 # 存储经验
-                replay_buffer.add((state,state_mask,machine_action,reward,done,next_state,next_state_mask,next_machine_action,next_action_mask))
-                state,state_mask,machine_action,action_mask = next_state,next_state_mask,next_machine_action,next_action_mask
-                step_done += 1
+                actions = [1 if i==actions else 0 for i in range(model_params['action_dim'])]
+                actions =[actions,action_mask]
+                # replay_buffer.add((state,actions,next_state,reward,done,next_action_mask))
+                state,action_mask = next_state,next_action_mask
+                # step_done += 1
 
-                if replay_buffer.size() >= train_params['minimal_size']:
-                    transition = replay_buffer.sample(batch_size=train_params['batch_size'])
-                    agent.update(transition)
+                # if replay_buffer.size() >= train_params['minimal_size']:
+                #     transition = replay_buffer.sample(batch_size=train_params['batch_size'])
+                #     agent.update(transition)
 
             record_makespan[job_name].append(env.time_step)
             record_reward[job_name].append(G) 
@@ -90,8 +88,8 @@ class Train():
             print('=================================')
 
         
-        agent.save_model(f"models/model{train_params['reward_type']}2s.pth")
-        with open(f"logs/record{train_params['reward_type']}2s.json", 'w') as json_file:
+        agent.save_model(f"models/model{train_params['reward_type']}2sa.pth")
+        with open(f"logs/record{train_params['reward_type']}2sa.json", 'w') as json_file:
             record = {}
             record['makespan'] = record_makespan
             record['reward'] = record_reward
@@ -100,22 +98,21 @@ class Train():
             print(f"model saved named model{train_params['reward_type']}.pth")
 
 model_params = {
-    "state_dim": 1,
-    "machine_dim": 1,
-    "state_embedding_dim": 32,
-    "macihne_embedding_dim": 32,
-    "machine_seq_len": 16,
-    "machine_embedding_dim": 8,
-    "action_embedding_dim": 24,
-    "action_dim": 32,
-    "num_heads": 1,
-    "job_seq_len": 32,
-    "machine_seq_len": 16,
-    "dropout": 0.1,
+    "state_dim": 16,
+    "machine_dim": 4,
+    "state_embedding_dim": 16,
+    "macihne_embedding_dim": 16,
+    "machine_state_dim" : 4,
+    "action_dim": 21,
+    "num_heads": 4,
+    "job_seq_len": 20,
+    "machine_seq_len": 15, 
+
+    "dropout": 0.05,
 }
 train_params = {
-    "num_episodes": 3_000,
-    "batch_size": 512,
+    "num_episodes": 1000,
+    "batch_size": 256,
     "learning_rate": 2e-4,
     "epsilon_start": 1,
     "epsilon_end": 0.005,

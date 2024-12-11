@@ -1,55 +1,44 @@
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
-from .model import D3QN
-from .utils import StateNorm
-# model_params = {
-#     "state_dim": 18,
-#     "machine_dim": 4,
-#     "action_dim": 32,
-#     "num_heads": 1,
-#     "job_seq_len": 30,
-#     "machine_seq_len": 16,
-#     "dropout": 0.1,
-# }
-# train_params = {
-#     "num_episodes": 100,
-#     "batch_size": 512,
-#     "learning_rate": 1e-6,
-#     "epsilon_start": 1,
-#     "epsilon_end": 1,
-#     "epsilon_decay": 500,
-#     "gamma": 1,
-#     "tau": 0.005,
-#     "target_update": 1000,
-#     "buffer_size": 10_000,
-#     "minimal_size": 1000,
-#     "scale_factor": 0.01,
-#     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
-#     "reward_type": 0,
-# }
+# Define the neural network for actor and critic
+class ActorCriticNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=128):
+        super(ActorCriticNetwork, self).__init__()
+        
+        # Actor network
+        self.actor = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+        )
+        # Critic network
+        self.critic = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self):
+        raise NotImplementedError
+
+    def get_action_logits(self, state):
+        return self.actor(state)
+
+    def get_q_value(self, state, action):
+        state_action = torch.cat([state, action], dim=-1)
+        return self.critic(state_action)
+
 class Agent():
     def __init__(self,model_params,train_params) -> None:
         
         self.device = train_params['device']
-        self.main_net = D3QN(
-            state_seq_len = model_params['job_seq_len'],
-            embedding_dim = model_params['state_embedding_dim'],
-            machine_state_dim = model_params['machine_state_dim'],
-            action_dim = model_params['action_dim'],
-            num_heads = model_params['num_heads'],
-            dropout =  model_params['dropout'],
-        ).to(self.device)
-
-        self.target_net = D3QN(
-            state_seq_len = model_params['job_seq_len'],
-            embedding_dim = model_params['state_embedding_dim'],
-            machine_state_dim = model_params['machine_state_dim'],
-            action_dim = model_params['action_dim'],
-            num_heads = model_params['num_heads'],
-            dropout =  model_params['dropout'],
-        ).to(self.device)
+        self.main_net = ActorCriticNetwork(...)
+        self.target_net = ActorCriticNetwork(...)
 
         self.target_net.load_state_dict(self.main_net.state_dict())
         
@@ -67,15 +56,22 @@ class Agent():
         self.count = 0
 
 
-    def take_action(self,state,action_mask,step_done,):
+    def take_action(self,state,machine_state,action_mask,step_done,):
 
         self.eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(
             -1. * step_done / self.epsilon_decay)
-        
-        if True or np.random.rand() < self.eps_threshold:
-            available_actions = np.where(action_mask)[0]
-            action = np.random.choice(available_actions)
-            return action
+        actions= []
+        if np.random.rand() < self.eps_threshold:
+            action_mask_copy = np.copy(action_mask)
+            for i,s in enumerate(machine_state):
+                if s[0] == 0: # 非空闲
+                    actions.append(20)
+                    continue
+                available_actions = np.where(action_mask_copy[i])[0]
+                action = np.random.choice(available_actions)
+                actions.append(action)
+                if action != 20: # 非空闲动作
+                   action_mask_copy[:,action] = False  # 其他智能体不再可选该动作
         else:
             with torch.no_grad():
                 state = torch.as_tensor(state).to(self.device).unsqueeze(0)
@@ -89,10 +85,10 @@ class Agent():
                     q_value_i[~action_mask_copy[i]] = -float('inf')
                     _,action = torch.max(q_value_i,dim=0)
                     action = action.cpu().item()
-                    action.append(action)
+                    actions.append(action)
                     if action != 20:
                         action_mask_copy[:,action] = False
-        return action
+        return actions
 
     def update(self, transition):
         states = transition.states
@@ -152,11 +148,10 @@ class Agent():
         q_tot = self.main_net.mixing_network(Q_all,mem)
                 # Loss and backpropagation
         loss = nn.SmoothL1Loss()(q_tot, q_tot_target)
-        # print("loss:",loss.item())
         self.optimizer.zero_grad()
         loss.backward()
 
-        torch.nn.utils.clip_grad_value_(self.main_net.parameters(),100)
+        # torch.nn.utils.clip_grad_value_(self.main_net.parameters(), 200)
         self.optimizer.step()
         with torch.no_grad():
             self.loss += loss.item()

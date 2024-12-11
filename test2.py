@@ -1,2 +1,5 @@
-for i in range(10):
-    print(i,": ","EOvdedn"[i%2::2])
+arr = [1,2,3,4,5]
+for i in arr:
+    if i == 1:
+        continue
+    print(i)

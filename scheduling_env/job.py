@@ -5,7 +5,6 @@ class JobStatus(Enum):
     IDLE = 1
     RUNNING = 2
 class Job(Node):
-    code_len = 0
     def __init__(self,id:int,process_num:int,process_list:list,insert_time:int) -> None:
         super().__init__(None)
         self._id = id #job序号,从1开始
@@ -18,9 +17,17 @@ class Job(Node):
         self._t_processed = 0                  # 当前工序已经被加工时间
         self._insert_time = insert_time        #进入环境的时间
         self._record = []                      #记录job加工过程
+        self._state = [[1 if j == i else 0 for j in range(16)] for i in range(16)]
+        self._est = self._insert_time           # 当前工序的最早开始时间
     def show(self):
         print(f'job {self._id} : {self._progress}/{self._process_num} status:{self._status} machine:{self._machine.id} t_process:{self._t_process} t_processed:{self._t_processed}',self._process_list[self._progress-1])
-
+    def get_state(self):
+        if self._status == JobStatus.COMPLETED:
+            return self._state[-1]
+        if self._status == JobStatus.RUNNING:
+            return self._state[-2]
+        if self._status == JobStatus.IDLE:
+            return self._state[self._progress-1]
 
     def get_t_process(self, machine_id):
         """
@@ -35,14 +42,6 @@ class Job(Node):
         """
         return machine_id in self._process_list[self._progress-1]
 
-
-    def get_process_remaining_time(self):
-        """
-            获取当前工序剩余或所需加工时间
-        """
-        if self._status == JobStatus.RUNNING or self._status == JobStatus.IDLE:
-            return self._t_process - self._t_processed 
-        raise ValueError('job is not running')
     
     def load_to_machine(self,machine,time_step):
         """将job装载至machine"""
@@ -63,6 +62,8 @@ class Job(Node):
             raise ValueError('job is not running')
         if not self._machine:
             raise ValueError('job has no machine')
+        
+        # print(f'j机器{self.machine.id} unload job {self.id}')
         self._record[-1][-1] += self._t_processed
         self._machine = None
         self._t_process = 0
@@ -100,7 +101,9 @@ class Job(Node):
             raise ValueError('job is completed')
         reminder = 0
         if self._status == JobStatus.IDLE:
-            reminder = min(self._process_list[self._progress-1].values())
+            times = self._process_list[self._progress-1].values()
+            reminder = sum(times)/len(times)
+            # reminder = min(self._process_list[self._progress-1].values())
         elif self._status == JobStatus.RUNNING:
             reminder = self._t_process - self._t_processed
         if reminder <= 0:
