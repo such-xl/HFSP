@@ -3,31 +3,6 @@ import torch.nn.functional as F
 import numpy as np
 from .model import D3QN
 from .utils import StateNorm
-# model_params = {
-#     "state_dim": 18,
-#     "machine_dim": 4,
-#     "action_dim": 32,
-#     "num_heads": 1,
-#     "job_seq_len": 30,
-#     "machine_seq_len": 16,
-#     "dropout": 0.1,
-# }
-# train_params = {
-#     "num_episodes": 100,
-#     "batch_size": 512,
-#     "learning_rate": 1e-6,
-#     "epsilon_start": 1,
-#     "epsilon_end": 1,
-#     "epsilon_decay": 500,
-#     "gamma": 1,
-#     "tau": 0.005,
-#     "target_update": 1000,
-#     "buffer_size": 10_000,
-#     "minimal_size": 1000,
-#     "scale_factor": 0.01,
-#     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
-#     "reward_type": 0,
-# }
 class Agent():
     def __init__(self,model_params,train_params) -> None:
         
@@ -169,9 +144,9 @@ class Agent():
                 actions = actions.squeeze(-1)+self.machine_dim
                 next_machine_actions[torch.arange(next_machine_actions.size(0)),i,actions] = 1
 
-                # is_all_zero = torch.all(next_machine_actions[:,i]==0,dim=-1,keepdim=True)
-                # max_values = torch.where(is_all_zero,torch.tensor(0.0,device=self.device),max_values)
-                max_values = torch.where(max_values == -float('inf'), torch.tensor(0.0), max_values)
+                is_all_zero = torch.all(next_machine_actions[:,i]==0,dim=-1,keepdim=True)
+                max_values = torch.where(is_all_zero,torch.tensor(0.0,device=self.device),max_values)
+                # max_values = torch.where(max_values == -float('inf'), torch.tensor(0.0), max_values)
                 next_Q_all += max_values
             Q_targets = rewards + self.gamma * next_Q_all * (1 - dones)
         # print(Q_all)

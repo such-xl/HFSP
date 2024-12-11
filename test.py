@@ -14,9 +14,9 @@ def moving_average(a, window_size):
 
 
 filename = 'record2r3'
-with open(f'logs/{filename}.json','r') as f:
+with open(f'HFSP/logs/{filename}.json','r') as f:
     record = json.load(f)
-with open('logs/record_sjf2.json','r') as f:
+with open('HFSP/logs/record_sjf2.json','r') as f:
     sjf_record = json.load(f)['makespan']
 data_path = os.path.dirname(os.path.abspath(__file__)) + '/scheduling_env/data/train_data/'
 jobs_name = os.listdir(data_path)
@@ -38,8 +38,8 @@ for i,name in enumerate (jobs_name):
     plt.plot(range(len(avg_makespan)),avg_makespan,c='blue')
     plt.plot(range(len(makespan)),[sjf_makepan for _ in range(len(makespan))],c='red')
     print(makespan)
-    plt.savefig(f'logs/imgs/{name}.png')
+    plt.savefig(f'HFSP/logs/imgs/{name}.png')
     print(f"Pearson correlation coefficient: {name}", correlation)
     plt.figure(i+100)
     plt.plot(range(len(reward)),reward)
-    plt.savefig(f'logs/imgs/{name}_reward.png')
+    plt.savefig(f'HFSP/logs/imgs/{name}_reward.png')

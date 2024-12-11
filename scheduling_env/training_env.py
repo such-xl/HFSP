@@ -5,8 +5,9 @@
 '''
 
 import math
-from .job import Job,JobList,JobStatus
-from .machine import Machine,MachineList,MachineStatus
+from .job import Job,JobList
+import numpy as np
+from .machine import Machine,MachineList
 class TrainingEnv():
     # 初始化环境
     def __init__(self,action_dim,reward_type,max_machine_num,max_job_num) -> None:
@@ -26,6 +27,7 @@ class TrainingEnv():
         self._reward_type = reward_type
         self._decision_machines:list[Machine] = None # 某時刻参与决策的所有机器
         self._job_list:list[Job] = None # 某时刻未完成的作业列表
+        self.U_ave = [0 for _ in range(max_machine_num)]
 
     def get_jobs_from_file(self, jobs_path:str):
         self._machine_num = self._uncompleted_jobs.fetch_jobs_from_file(jobs_path)
@@ -33,9 +35,8 @@ class TrainingEnv():
         self._idle_machines = MachineList(self._machine_num)
 
 
-
     def is_decision_machine(self,agent_id):
-        """是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策"""
+        """是否是需要做出决策的agent,当agent只能选择空闲时,则不需要做出决策"""
         uncompleted_job :Job = self._uncompleted_jobs.head
         while uncompleted_job:
             if uncompleted_job.is_wating_for_machine() and uncompleted_job.match_machine(agent_id):
@@ -106,8 +107,21 @@ class TrainingEnv():
             self._job_list.append(job)
             job = job.next
         self._time_step = 0
+        static_state = self.get_job_static_state()
+        print(static_state[0],static_state[1])
         state,machine_action,action_mask = self.get_state()
         return state,machine_action,action_mask
+    def get_job_static_state(self): #获取所有作业的加工信息
+        uncompleted_job:Job = self._uncompleted_jobs.head
+        state = []
+        while uncompleted_job:
+            state.append(uncompleted_job.get_state_encoding(self._max_machine_num))
+            uncompleted_job = uncompleted_job.next
+        return np.array(state)
+    
+    def get_state_feature(self): #获取作业的状态特征
+        pass
+    
     def get_state(self):
         uncompleted_job:Job = self._uncompleted_jobs.head
         state,machine_action = [],[x.get_state_encoding(4) for x in self._decision_machines]
@@ -117,7 +131,7 @@ class TrainingEnv():
             for i,machines in enumerate(self._decision_machines):
                 action_mask[i].append(True if uncompleted_job.is_wating_for_machine() and uncompleted_job.match_machine(machines.id) else False)
             uncompleted_job = uncompleted_job.next
-        
+        # print(state)
         return state,machine_action,action_mask
          
     def step(self,actions,machine_action,scale_factor):
@@ -138,6 +152,7 @@ class TrainingEnv():
         reward = 0 if not done else -self.time_step*0.01
         state,machine_action,action_mask = self.get_state()
         return  state,machine_action,action_mask,reward,done
+        
         if self._reward_type == 0:
             reward = self.reward_func_0(scale_factor,done)
         elif self._reward_type == 1:
@@ -194,8 +209,6 @@ class TrainingEnv():
     @property
     def jobs_num(self):
         return self._jobs_num
- 
-        return self._busy_agents
     @property
     def draw_data(self):
         return self._draw_data

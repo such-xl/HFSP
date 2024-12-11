@@ -1,4 +1,5 @@
 from enum import Enum
+import numpy as np
 from .utils import Node,DoublyLinkList
 class JobStatus(Enum):
     COMPLETED = 0
@@ -18,9 +19,12 @@ class Job(Node):
         self._t_processed = 0                  # 当前工序已经被加工时间
         self._insert_time = insert_time        #进入环境的时间
         self._record = []                      #记录job加工过程
+        # self.CTK=[0 for i in range(m)]      #last machine working time
+        # self.OP=[0 for i in range(J_num)]       #the number of finished operations for each job
+        # self.UK=[0 for i in range(machine_mums)]       #machine utilization
+        # self.CRJ=[0 for i in range(J_num)]      #completion rate of jobs
     def show(self):
         print(f'job {self._id} : {self._progress}/{self._process_num} status:{self._status} machine:{self._machine.id} t_process:{self._t_process} t_processed:{self._t_processed}',self._process_list[self._progress-1])
-
 
     def get_t_process(self, machine_id):
         """
@@ -108,22 +112,21 @@ class Job(Node):
             raise ValueError('reminder is negative or zero')
         return reminder    
       
-
+    
     #获取job state 编码
     def get_state_encoding(self,machine_nums):
         """获取job state 编码"""
         """state:[工序1的机器1的加工时间,工序1的机器2的加工时间,...,工序1的机器m的加工时间,...,工序n的机器1的加工时间,...,工序n的机器m的加工时间]"""
         state = [[self._process_list[i].get(machine + 1, 0) for i in range(len(self._process_list))] for machine in range(machine_nums)]
-        for i in range(len(state)):
-            print(state[i])
         return state
                          
         # """job state:[当前工序加工时间,当前工序绝对延时,当前工序的加工信息编码，下一道工序的加工信息编码]"""
         # job_state = [self._t_processed,self.get_process_remaining_time()]
+        # print(job_state)
         # cp_dict = self._process_list[self._progress-1] #当前工序加工信息dict
-
         # p1 = [cp_dict.get(i+1,0) if self._status == JobStatus.IDLE else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]
         # p2 = [self._process_list[self._progress].get(i+1,0) if self._progress < self._process_num else 0 for i in range(machine_nums)]
+        # print(p1,p2)
         # job_state += p1 + p2
         # return job_state
     

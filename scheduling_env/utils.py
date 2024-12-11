@@ -188,14 +188,16 @@ class StateNorm:
     def job_padding(self,data:list):
         # dim-padding
         data = [x + [0]*(self.job_dim-len(x)) if len(x)<self.job_dim else x[:self.job_dim] for x in data]
+        # print(data)
         #seq-padding
         mask = np.ones((self.job_seq_len,),dtype = bool)
         mask[:len(data)] = False
         padded_data = np.zeros((self.job_seq_len,self.job_dim))
-        if len(data)>0:
-            padded_data[:len(data),:] = data
-        if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
-            mask[0] = False
+        data = np.array(data)
+        # if len(data)>0:
+        #     padded_data[:len(data),:] = data
+        # if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
+        #     mask[0] = False
         return padded_data*self.scale_factor,mask
     def machine_action_padding(self,machine_action,action_mask):
         for ma, am  in  zip(machine_action,action_mask):
