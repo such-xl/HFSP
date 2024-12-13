@@ -48,7 +48,7 @@ class TrainingEnv():
         decision_machines = []
         machine:Machine = self._machines.head
         while machine:
-            if machine.is_idle() and self.is_decision_machine(machine.id):
+            if machine.is_idle() and not machine.step_decision_made(self._time_step) and self.is_decision_machine(machine.id):
                 decision_machines.append(machine)
             machine = machine.next
         return decision_machines
@@ -84,10 +84,10 @@ class TrainingEnv():
                 done =  False
                 break
             job = job.next
-
-        while not done and not self.is_any_machine_need_to_decision(): # 没有结束且没有空闲机器，继续
-            done = self.run()
-        return done
+        truncated = False if self._time_step < 400 else True
+        while not done and not truncated and not self.is_any_machine_need_to_decision(): # 没有结束且没有空闲机器，继续
+            done,truncated = self.run()
+        return done,truncated
     def reset(self,jobs_path:str):
         """
             重置环境
@@ -118,8 +118,9 @@ class TrainingEnv():
         action_mask = []
         while job:
             state.append(job.get_state())
-            action_mask.append([True if job.match_machine(self._current_machine.id) else False])
+            action_mask.append(True if job.is_wating_for_machine() and job.match_machine(self._current_machine.id) else False)
             job = job.next
+        action_mask.append(True)
         machine_state = self._current_machine.get_state()
         machine_state.extend([0 for _ in range(len(state[0])-len(machine_state))])
         state.append(machine_state)
@@ -128,25 +129,30 @@ class TrainingEnv():
     def step(self,action,scale_factor):
 
         if action == self._action_dim - 1: # 采样空闲动作，不对环境作出改变
-            pass
+            self._current_machine.update_decision_time(self._time_step)
         else:
             self._current_machine.load_job(self._job_list[action],self._time_step)
-        done = False
+        done,truncated = False,False
         if not self.is_any_machine_need_to_decision(): # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
-            done = self.run()
+            done,truncated = self.run()
         # 要么结束，要么有机器需要采样动作
         decision_machines = self.get_decision_machines()
-        if decision_machines:
+        if len(decision_machines):
             x = random.randint(0,len(decision_machines)-1)
             self._current_machine = decision_machines[x]
         state,action_mask = self.get_state()
-        reward = -1 if not done else 0
-        return state,action_mask,reward,done 
+        # reward = -0.1 if action==self._action_dim-1 else 0
+        if truncated:
+            reward = -1000
+        else:
+            reward = -0.01 if action==self._action_dim-1 else 0
+            reward = reward if not done else 1000/self._time_step
+        return state,action_mask,reward,done,truncated
 
     def is_any_machine_need_to_decision(self):
         machine:Machine = self._machines.head
         while machine:
-            if machine.is_idle() and self.is_decision_machine(machine.id):
+            if machine.is_idle() and not machine.step_decision_made(self._time_step) and self.is_decision_machine(machine.id):
                 return True
             machine = machine.next
         return False
@@ -199,7 +205,6 @@ class TrainingEnv():
     def jobs_num(self):
         return self._jobs_num
  
-        return self._busy_agents
     @property
     def draw_data(self):
         return self._draw_data

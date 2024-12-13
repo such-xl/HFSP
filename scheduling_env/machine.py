@@ -21,6 +21,7 @@ class Machine(Node):
         self._end_idle_time = 0 # 结束等待时间
         self._idle_time = 0 # 空闲时间
         self._time_step = 0 # 记录全局时间
+        self._last_decison_time = -1 # 记录上次决策时间
         self._state = [
             [1,0,0,0], # 空闲
             [0,1,0,0], # 忙碌
@@ -62,6 +63,7 @@ class Machine(Node):
         # print(f'机器{self.id} load job {self._job.id}')
         job.load_to_machine(self,time_step)
         self._status = MachineStatus.RUNNING
+        self._last_decison_time = time_step
     def unload_job(self):
         """卸载作业"""
         if self._status != MachineStatus.RUNNING:
@@ -77,6 +79,14 @@ class Machine(Node):
         if not self._job.is_on_processing(): # 如果job不在运行，则卸载job
 
             self.unload_job()
+    def step_decision_made(self,timestep):
+        """
+            当前时序是否已经做出决策
+        """
+        return timestep == self._last_decison_time
+    def update_decision_time(self,time_step):
+        """更新决策时间"""
+        self._last_decison_time = time_step
 
     def update_end_idle_time(self,time_step):
         """更新结束等待时间"""
@@ -108,8 +118,6 @@ class Machine(Node):
     @job.setter
     def job(self,job):
         self._job = job  
-
-
 class MachineList(DoublyLinkList):
     def __init__(self,machine_num) -> None:
         super().__init__()

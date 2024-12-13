@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 bufferEntity = namedtuple('Transition',(
-    "states","machine_states","actions","action_masks","rewards","dones","next_states","next_machine_states","next_action_masks"
+    "state","action","next_state","reward","done","next_action_mask"
 ))
 class ReplayBuffer:
     def __init__(self, capacity,state_seq_len,state_dim,machine_action_dim,machine_seq_len):
@@ -12,7 +12,7 @@ class ReplayBuffer:
         self.buffer_size = capacity
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-        self.entity_size = state_seq_len*state_dim*2 + state_seq_len*2 + machine_action_dim*machine_seq_len*2  + 1 + 1 + machine_seq_len*state_seq_len
+        self.entity_size = (state_seq_len+1)*state_dim* machine_action_dim*3 + 1 + 1
         self.buffer = torch.zeros((capacity,self.entity_size)).to(self.device)
         self.state_seq_len = state_seq_len
         self.machine_seq_len = machine_seq_len
@@ -22,7 +22,7 @@ class ReplayBuffer:
     def add(self,data):
         """
         
-        state,machine_state,actions,action_mask,reward,done,next_state,next_machine_state,next_action_mask
+        state,actions,next_state,reward,done,next_action_mask
 
         """
         self.buffer[self.pos] *= 0
@@ -40,15 +40,12 @@ class ReplayBuffer:
         samples_idx = np.random.randint(0, self.size(), size=batch_size)
         ten = self.buffer[samples_idx, :]
         p = self.points
-        return BufferEntity(ten[:,p[0]:p[1]].reshape((batch_size,self.state_seq_len,-1)),  # state
-                            ten[:, p[1]: p[2]].reshape((batch_size,self.machine_seq_len,-1)),  # machine_state
-                            ten[:, p[2]: p[3]],                                     # machine action
-                            ten[:, p[3]: p[4]].reshape((batch_size,self.machine_seq_len,-1)),                                             # action_mask
-                            ten[:, p[4]: p[5]],                                              # reward
-                            ten[:, p[5]: p[6]],                                     #done
-                            ten[:, p[6]: p[7]].reshape((batch_size,self.state_seq_len,-1)),    # next_state
-                            ten[:, p[7]: p[8]].reshape((batch_size,self.machine_seq_len,-1)), # next machine state
-                            ten[:, p[8]: p[9]].reshape((batch_size,self.machine_seq_len,-1))   # next action mask
+        return BufferEntity(ten[:,p[0]:p[1]].reshape((batch_size,self.state_seq_len+1,-1)),  # state
+                            ten[:, p[1]: p[2]].reshape((batch_size,2,-1)),      # action
+                            ten[:, p[2]: p[3]].reshape((batch_size,self.state_seq_len+1,-1)),                                     # next_state
+                            ten[:, p[3]: p[4]],                                             # reward
+                            ten[:, p[4]: p[5]],                                              # done 
+                            ten[:, p[5]: p[6]],                                     #next_action_mask
                             )
 
     def size(self):
@@ -63,11 +60,8 @@ class ReplayBuffer:
 
 class BufferEntity(NamedTuple):
     states: torch.Tensor
-    machine_state:torch.Tensor
     actions:torch.Tensor
-    action_masks:torch.Tensor
+    next_states: torch.Tensor
     rewards: torch.Tensor
     dones: torch.Tensor
-    next_states: torch.Tensor
-    next_machine_states: torch.Tensor
     next_action_masks: torch.Tensor

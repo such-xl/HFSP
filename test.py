@@ -13,7 +13,7 @@ def moving_average(a, window_size):
     return np.concatenate((begin, middle, end))
 
 
-filename = 'record2r3'
+filename = 'record2rf'
 with open(f'logs/{filename}.json','r') as f:
     record = json.load(f)
 with open('logs/record_sjf2.json','r') as f:
@@ -42,4 +42,7 @@ for i,name in enumerate (jobs_name):
     print(f"Pearson correlation coefficient: {name}", correlation)
     plt.figure(i+100)
     plt.plot(range(len(reward)),reward)
+    plt.title(name+' '+filename)
+    plt.xlabel('episode')
+    plt.ylabel('reward')
     plt.savefig(f'logs/imgs/{name}_reward.png')

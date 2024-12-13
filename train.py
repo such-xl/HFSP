@@ -35,7 +35,7 @@ class Train():
         agent:Agent = Agent(model_params,train_params)
 
 
-        replay_buffer = ReplayBuffer(
+        replay_buffer: ReplayBuffer = ReplayBuffer(
             capacity = train_params["buffer_size"],
             state_seq_len = model_params["job_seq_len"],
             state_dim = model_params["state_dim"],
@@ -61,24 +61,24 @@ class Train():
             job_name = random.choice(['Mk10.fjs'])
             job_path = train_data_path+job_name
             state,action_mask= env.reset(jobs_path=job_path)
-            done = False
+            done,truncated = False,False
             scale_factor = train_params['scale_factor']
-            while not done:
+            while not done and not truncated:
                 # 采样一个动作
                 actions = agent.take_action(state,action_mask,step_done)
                 # 执行动作
-                next_state,next_action_mask,reward,done = env.step(actions,scale_factor)
+                next_state,next_action_mask,reward,done,truncated = env.step(actions,scale_factor)
                 G += reward
                 # 存储经验
                 actions = [1 if i==actions else 0 for i in range(model_params['action_dim'])]
                 actions =[actions,action_mask]
-                # replay_buffer.add((state,actions,next_state,reward,done,next_action_mask))
+                replay_buffer.add((state,actions,next_state,reward,done,next_action_mask))
                 state,action_mask = next_state,next_action_mask
-                # step_done += 1
+                step_done += 1
 
-                # if replay_buffer.size() >= train_params['minimal_size']:
-                #     transition = replay_buffer.sample(batch_size=train_params['batch_size'])
-                #     agent.update(transition)
+                if replay_buffer.size() >= train_params['minimal_size']:
+                    transition = replay_buffer.sample(batch_size=train_params['batch_size'])
+                    agent.update(transition)
 
             record_makespan[job_name].append(env.time_step)
             record_reward[job_name].append(G) 
@@ -88,8 +88,8 @@ class Train():
             print('=================================')
 
         
-        agent.save_model(f"models/model{train_params['reward_type']}2sa.pth")
-        with open(f"logs/record{train_params['reward_type']}2sa.json", 'w') as json_file:
+        agent.save_model(f"models/model{train_params['reward_type']}rf.pth")
+        with open(f"logs/record{train_params['reward_type']}rf.json", 'w') as json_file:
             record = {}
             record['makespan'] = record_makespan
             record['reward'] = record_reward
@@ -111,17 +111,17 @@ model_params = {
     "dropout": 0.05,
 }
 train_params = {
-    "num_episodes": 1000,
-    "batch_size": 256,
+    "num_episodes": 500,
+    "batch_size":1024,
     "learning_rate": 2e-4,
     "epsilon_start": 1,
-    "epsilon_end": 0.005,
+    "epsilon_end": 0.05,
     "epsilon_decay": 50_000,
     "gamma": 1,
     "tau": 0.05,
     "target_update": 1000,
-    "buffer_size": 10_000,
-    "minimal_size": 1_000,
+    "buffer_size": 50_000,
+    "minimal_size": 10_000,
     "scale_factor": 0.01,
     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
     "reward_type": 2,
