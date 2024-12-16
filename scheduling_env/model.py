@@ -18,27 +18,28 @@ class D3QN(nn.Module):
         self.machine_dim = machine_dim
         self.job_linear = nn.Sequential(
             nn.Linear(state_dim,32),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(32,1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Flatten()
         )
         self.machine_linear = nn.Sequential(
             nn.Linear(machine_dim,16),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(16,1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         )
         self.j_m_linear = nn.Sequential(
-            nn.Linear(21,32),
-            nn.ReLU(),
+            nn.Linear(11,32),
+            nn.LeakyReLU(),
             nn.Linear(32,64),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         )
         self.A_net = nn.Linear(64,action_dim)
         self.V_net = nn.Linear(64,1)
-    def forward(self,state):
+    def forward(self,state,action_mask):
         job_state = state[:,:-1,:]
+        # job_state = job_state.view(job_state.size(0),-1)
         machine_state = state[:,-1,:self.machine_dim]
         job_embedding = self.job_linear(job_state).squeeze(1)
         machine_embedding = self.machine_linear(machine_state)
@@ -48,8 +49,80 @@ class D3QN(nn.Module):
         A = self.A_net(output)
         # V Net
         V = self.V_net(output)
-        MAX_A = A.max(dim=-1,keepdim=True)[0]
-        Q = V + A - MAX_A
+        # 计算有效动作的均值
+        valid_A_mean = (A * action_mask).sum(dim=1, keepdim=True) / action_mask.sum(dim=1, keepdim=True)
+
+        # 对有效动作归一化
+        normalized_A = A - valid_A_mean
+
+        Q = V + normalized_A
         return Q
 
-    
+class PolicyNet(nn.modules):
+    def __init__(self,state_dim,machine_dim,action_dim):
+        super().__init__()
+        self.machine_dim = machine_dim
+        self.job_linear = nn.Sequential(
+            nn.Linear(state_dim,32),
+            nn.LeakyReLU(),
+            nn.Linear(32,1),
+            nn.LeakyReLU(),
+            nn.Flatten()
+        )
+        self.machine_linear = nn.Sequential(
+            nn.Linear(machine_dim,16),
+            nn.LeakyReLU(),
+            nn.Linear(16,1),
+            nn.LeakyReLU(),
+        )
+        self.j_m_linear = nn.Sequential(
+            nn.Linear(11,32),
+            nn.LeakyReLU(),
+            nn.Linear(32,action_dim),
+            nn.LeakyReLU(),
+        )
+    def forward(self,state,action_mask):
+        job_state = state[:,:-1,:]
+        machine_state = state[:,-1,:self.machine_dim]
+        job_embedding = self.job_linear(job_state).squeeze(1)
+        machine_embedding = self.machine_linear(machine_state)
+        output = torch.cat([job_embedding,machine_embedding],dim=-1)
+        logits = self.j_m_linear(output)
+        logits = logits * (action_mask-1) * 1e9
+        probs = nn.F.softmax(logits,dim=-1)
+        return probs
+class PolicyNet(nn.modules):
+    def __init__(self,state_dim,machine_dim,action_dim):
+        super().__init__()
+        self.machine_dim = machine_dim
+        self.job_linear = nn.Sequential(
+            nn.Linear(state_dim,32),
+            nn.LeakyReLU(),
+            nn.Linear(32,1),
+            nn.LeakyReLU(),
+            nn.Flatten()
+        )
+        self.machine_linear = nn.Sequential(
+            nn.Linear(machine_dim,16),
+            nn.LeakyReLU(),
+            nn.Linear(16,1),
+            nn.LeakyReLU(),
+        )
+        self.j_m_linear = nn.Sequential(
+            nn.Linear(11,32),
+            nn.LeakyReLU(),
+            nn.Linear(32,action_dim),
+            nn.LeakyReLU(),
+        )
+    def forward(self,state,action_mask):
+        job_state = state[:,:-1,:]
+        machine_state = state[:,-1,:self.machine_dim]
+        job_embedding = self.job_linear(job_state).squeeze(1)
+        machine_embedding = self.machine_linear(machine_state)
+        output = torch.cat([job_embedding,machine_embedding],dim=-1)
+        logits = self.j_m_linear(output)
+        logits = logits * (action_mask-1) * 1e9
+        probs = nn.F.softmax(logits,dim=-1)
+        return probs
+
+

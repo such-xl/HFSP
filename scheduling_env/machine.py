@@ -22,19 +22,22 @@ class Machine(Node):
         self._idle_time = 0 # 空闲时间
         self._time_step = 0 # 记录全局时间
         self._last_decison_time = -1 # 记录上次决策时间
-        self._state = [
-            [1,0,0,0], # 空闲
-            [0,1,0,0], # 忙碌
-            [0,0,1,0], # 故障
-            [0,0,0,1], # 未定义
-        ]
+        # self._state = [
+        #     [1,0,0,0], # 空闲
+        #     [0,1,0,0], # 忙碌
+        #     [0,0,1,0], # 故障
+        #     [0,0,0,1], # 未定义
+        # ]
+        self._state = [1 if self._id-1==i else 0 for i in range(10)]
+        self.action_record = []
     def get_state(self):
-        if self._status == MachineStatus.IDLE:
-            return self._state[0]
-        if self._status == MachineStatus.RUNNING:
-            return self._state[1]
-        if self._status == MachineStatus.FAULT:
-            return self._state[3]
+        # if self._status == MachineStatus.IDLE:
+        #     return self._state[0]
+        # if self._status == MachineStatus.RUNNING:
+        #     return self._state[1]
+        # if self._status == MachineStatus.FAULT:
+        #     return self._state[3]
+        return self._state
     def get_bin_code(self):
         binary_str = bin(self._id)[2:]
         binary_list = [int(digit) for digit in binary_str]
@@ -87,7 +90,10 @@ class Machine(Node):
     def update_decision_time(self,time_step):
         """更新决策时间"""
         self._last_decison_time = time_step
-
+    def record_action(self,action):
+        self.action_record.append(action)
+    def print_action_record(self):
+        print(f'machine {self._id} action record: {self.action_record}')
     def update_end_idle_time(self,time_step):
         """更新结束等待时间"""
         self._end_idle_time = time_step

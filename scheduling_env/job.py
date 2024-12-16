@@ -17,7 +17,7 @@ class Job(Node):
         self._t_processed = 0                  # 当前工序已经被加工时间
         self._insert_time = insert_time        #进入环境的时间
         self._record = []                      #记录job加工过程
-        self._state = [[1 if j == i else 0 for j in range(16)] for i in range(16)]
+        self._state = [[1 if j == i else 0 for j in range(12)] for i in range(12)]
         self._est = self._insert_time           # 当前工序的最早开始时间
     def show(self):
         print(f'job {self._id} : {self._progress}/{self._process_num} status:{self._status} machine:{self._machine.id} t_process:{self._t_process} t_processed:{self._t_processed}',self._process_list[self._progress-1])
@@ -25,6 +25,9 @@ class Job(Node):
         if self._status == JobStatus.COMPLETED:
             return self._state[-1]
         if self._status == JobStatus.RUNNING:
+            state = self._state[-2].copy()
+            state[self._progress-1] = 2
+            return state
             return self._state[-2]
         if self._status == JobStatus.IDLE:
             return self._state[self._progress-1]

@@ -52,14 +52,6 @@ class TrainingEnv():
                 decision_machines.append(machine)
             machine = machine.next
         return decision_machines
-    def execute_action(self,machine,action):
-        """
-            执行动作
-        """
-        if action == self._action_dim - 1:
-            return None
-        machine.load_job(self._job_list[action],self._time_step)
-        return self.get_state()
 
     def run(self):
         """
@@ -84,7 +76,7 @@ class TrainingEnv():
                 done =  False
                 break
             job = job.next
-        truncated = False if self._time_step < 400 else True
+        truncated = False if self._time_step < 1000 else True
         while not done and not truncated and not self.is_any_machine_need_to_decision(): # 没有结束且没有空闲机器，继续
             done,truncated = self.run()
         return done,truncated
@@ -127,7 +119,7 @@ class TrainingEnv():
         return state,action_mask
     
     def step(self,action,scale_factor):
-
+        self._current_machine.record_action(action)
         if action == self._action_dim - 1: # 采样空闲动作，不对环境作出改变
             self._current_machine.update_decision_time(self._time_step)
         else:
@@ -141,12 +133,13 @@ class TrainingEnv():
             x = random.randint(0,len(decision_machines)-1)
             self._current_machine = decision_machines[x]
         state,action_mask = self.get_state()
-        # reward = -0.1 if action==self._action_dim-1 else 0
         if truncated:
-            reward = -1000
+            reward = -100
         else:
-            reward = -0.01 if action==self._action_dim-1 else 0
-            reward = reward if not done else 1000/self._time_step
+            reward = -0.001 if action==self._action_dim-1 else 0
+            reward = reward if not done else 6000/self._time_step
+        # if done or truncated:
+        #     self._machine_list[0].print_action_record()
         return state,action_mask,reward,done,truncated
 
     def is_any_machine_need_to_decision(self):

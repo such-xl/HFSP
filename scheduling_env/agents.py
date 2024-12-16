@@ -73,8 +73,8 @@ class Agent():
         else:
             with torch.no_grad():
                 state = torch.as_tensor(state).to(self.device,dtype=torch.float).unsqueeze(0)
-                q_value = self.main_net(state).squeeze(0)
                 action_mask = torch.as_tensor(action_mask,dtype=torch.bool).to(self.device)
+                q_value = self.main_net(state,action_mask.to(torch.float).unsqueeze(0)).squeeze(0)
                 q_value[~action_mask] = -float('inf')
                 _,action = torch.max(q_value,dim=-1)
                 action = action.cpu().item()
@@ -95,36 +95,47 @@ class Agent():
         # print(dones.shape)
         # print(next_states.shape)
         # print(next_action_masks.shape)
-
-        q_values = self.main_net(states)
+        action_masks = actions[:,1]
         actions = actions[:,0]
-        Q = torch.sum(q_values * actions,dim=1)
+        q_values = self.main_net(states,action_masks.to(torch.float))
+        Q_values = torch.sum(q_values * actions,dim=1)
         with torch.no_grad():
-            next_q = self.main_net(next_states)
+            next_q = self.main_net(next_states,next_action_masks.to(torch.float))
             next_q[~next_action_masks] = -float('inf')
             _, max_actions = next_q.max(dim=-1)
-            next_q_values = self.target_net(next_states)
+            next_q_values = self.target_net(next_states,next_action_masks.to(torch.float))
             next_q_values = next_q_values.gather(1,max_actions.unsqueeze(-1)).squeeze(-1)
             Q_targets = rewards + self.gamma * next_q_values * (1 - dones)
 
-        loss = nn.SmoothL1Loss()(Q,Q_targets)
+        loss = nn.SmoothL1Loss()(Q_values,Q_targets)
         self.optimizer.zero_grad()
         loss.backward()
 
-        # torch.nn.utils.clip_grad_value_(self.main_net.parameters(),100)
+        torch.nn.utils.clip_grad_value_(self.main_net.parameters(),100)
         self.optimizer.step()
         with torch.no_grad():
             self.loss += loss.item()
-        actor_state_dict = self.main_net.state_dict()
-        target_state_dict = self.target_net.state_dict()
-        for key in actor_state_dict:
-            target_state_dict[key] = actor_state_dict[key] * self.tau + target_state_dict[key] * (1 - self.tau)
-        self.target_net.load_state_dict(target_state_dict)
-        if (self.count + 1) % 500 == 0:
-            print('loss:',self.loss/500)
+        # actor_state_dict = self.main_net.state_dict()
+        # target_state_dict = self.target_net.state_dict()
+        # for key in actor_state_dict:
+        #     target_state_dict[key] = actor_state_dict[key] * self.tau + target_state_dict[key] * (1 - self.tau)
+        # self.target_net.load_state_dict(target_state_dict)
+        # if (self.count + 1) % 500 == 0:
+        #     print('loss:',self.loss/500)
+        #     # print('epsilon:',self.eps_threshold)
+        #     self.loss = 0
+        # self.count += 1
+        self.count+=1
+
+        if (self.count + 1) % self.target_update == 0:
+            print('loss:',self.loss/self.target_update)
+            actor_state_dict = self.main_net.state_dict()
+            target_state_dict = self.target_net.state_dict()
+            for key in actor_state_dict:
+                target_state_dict[key] = actor_state_dict[key] * self.tau + target_state_dict[key] * (1 - self.tau)
+            self.target_net.load_state_dict(target_state_dict)
             # print('epsilon:',self.eps_threshold)
             self.loss = 0
-        self.count += 1
 
     def save_model(self, path):
         torch.save(self.main_net.state_dict(), path)

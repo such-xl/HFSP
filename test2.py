@@ -1,5 +1,6 @@
-arr = [1,2,3,4,5]
-for i in arr:
-    if i == 1:
-        continue
-    print(i)
+import gymnasium as gym
+
+dim_1 = 5
+dim_2 = 5
+space = gym.MultiDiscrete([dim_1, dim_2])
+print(space)
