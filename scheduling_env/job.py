@@ -17,8 +17,9 @@ class Job(Node):
         self._t_processed = 0                  # 当前工序已经被加工时间
         self._insert_time = insert_time        #进入环境的时间
         self._record = []                      #记录job加工过程
-        self._state = [[1 if j == i else 0 for j in range(12)] for i in range(12)]
+        self._state = [[1 if j == i else 0 for j in range(16)] for i in range(16)]
         self._est = self._insert_time           # 当前工序的最早开始时间
+        self._rest = -1                        # 当前工序的实际开始时间
     def show(self):
         print(f'job {self._id} : {self._progress}/{self._process_num} status:{self._status} machine:{self._machine.id} t_process:{self._t_process} t_processed:{self._t_processed}',self._process_list[self._progress-1])
     def get_state(self):
@@ -59,6 +60,7 @@ class Job(Node):
         self._machine = machine
         self._t_processed = 0
         self._status = JobStatus.RUNNING
+        self._rest = time_step
     def unload_machine(self):
         """将job从machine卸载"""
         if self._status != JobStatus.RUNNING:
@@ -74,6 +76,7 @@ class Job(Node):
         self._progress += 1
         self._status = JobStatus.COMPLETED if self._progress == self._process_num + 1 else JobStatus.IDLE
 
+
     def is_completed(self):
         """判断是否所有工序都完成""" 
         return self._status == JobStatus.COMPLETED
@@ -86,7 +89,7 @@ class Job(Node):
         """判断是否正在加工"""
         return self._status == JobStatus.RUNNING
     
-    def run(self,min_run_timestep):
+    def run(self,min_run_timestep,time_step):
         """ 执行min_run_timestep 时序"""
         self._t_processed += min_run_timestep
 
@@ -98,6 +101,7 @@ class Job(Node):
         
         if self._t_processed == self._t_process:        #当前工序加工完成
             self.unload_machine()
+            self._est = time_step + min_run_timestep
     def current_progress_remaining_time(self):
         """获取当前工序剩余加工时间"""
         if self._status == JobStatus.COMPLETED:
@@ -112,7 +116,22 @@ class Job(Node):
         if reminder <= 0:
             raise ValueError('reminder is negative or zero')
         return reminder    
-      
+    def get_remaining_avg_time(self):
+        """获取平均剩余加工时间"""
+        if self._status == JobStatus.COMPLETED:
+            raise ValueError('job is completed')
+        reminder = 0
+        if self._status == JobStatus.IDLE:
+            reminder = sum(self._process_list[self._progress-1].values())/len(self._process_list[self._progress-1].values())
+        else:
+            reminder = self._t_process - self._t_processed
+         
+        reminder_progress = self._process_list[self._progress:]
+        for p in reminder_progress:
+            reminder += sum(p.values())/len(p.values())
+        if reminder <= 0:
+            raise ValueError('reminder is negative or zero')
+        return reminder
     def get_static_state(self,machine_nums):
         # 
         static_state = [[0 for _ in range(machine_nums)] for __ in range(self._process_num)]
@@ -131,7 +150,16 @@ class Job(Node):
         p2 = [self._process_list[self._progress].get(i+1,0) if self._progress < self._process_num else 0 for i in range(machine_nums)]
         job_state += p1 + p2
         return job_state
-    
+    def update_est(self,time_step):
+        """更新当前工序的最早开始时间"""
+        self._est = time_step
+    def get_waiting_time(self):
+        """获取当前工序的等待时间"""
+        if self._status == JobStatus.IDLE or self._status == JobStatus.COMPLETED:
+            raise ValueError('job is idle or completed')
+        if self._rest<0 or self._est<0 or self._rest<self._est:
+            raise ValueError('rest or est is negative || rest < est')
+        return self._rest - self._est
     @property
     def id(self):
         return self._id

@@ -29,7 +29,7 @@ class Machine(Node):
         #     [0,0,0,1], # 未定义
         # ]
         self._state = [1 if self._id-1==i else 0 for i in range(10)]
-        self.action_record = []
+        self.draw_data = []
     def get_state(self):
         # if self._status == MachineStatus.IDLE:
         #     return self._state[0]
@@ -63,10 +63,11 @@ class Machine(Node):
             raise ValueError('machine has job')
         self._end_time = time_step # 更新结束等待时间
         self._job = job
-        # print(f'机器{self.id} load job {self._job.id}')
+        self.draw_data.append([job.id-1,time_step,time_step+job.get_t_process(self._id)])
         job.load_to_machine(self,time_step)
         self._status = MachineStatus.RUNNING
         self._last_decison_time = time_step
+        
     def unload_job(self):
         """卸载作业"""
         if self._status != MachineStatus.RUNNING:
@@ -75,9 +76,9 @@ class Machine(Node):
             raise ValueError('machine has no job')
         self._job = None
         self._status = MachineStatus.IDLE
-    def run(self,min_run_timestep):
+    def run(self,min_run_timestep,time_step):
         """运行 'min_run_timestep' 时序，让环境产生空闲机器"""
-        self._job.run(min_run_timestep)
+        self._job.run(min_run_timestep,time_step)
 
         if not self._job.is_on_processing(): # 如果job不在运行，则卸载job
 

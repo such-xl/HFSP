@@ -158,7 +158,24 @@ class Plotter:
         plt.tight_layout()
         plt.savefig('kk.png')
         plt.show()
-
+    def machine_gant_chat(self,data):
+        self.fig, self.ax = plt.subplots()
+        job_num = 0
+        for i, info in enumerate(data,start=1):
+            for j in info:
+                self.ax.barh(f'machine{i}',j[2]-j[1],left=j[1],color=self.colorset[j[0]])
+                job_num = max(job_num,j[0])
+        patch = []
+        # for i in range(job_num):
+        #     patch.append(mpatches.Patch(color=self.colorset[i],label=f'job{i+1}'))
+        self.ax.set_xlabel('time_step')
+        self.ax.set_ylabel('ma')
+        self.ax.set_title('gant chat')
+        self.ax.grid(True)
+        plt.legend(handles=patch, loc='best')
+        plt.tight_layout()
+        plt.savefig('kkm.png')
+        plt.show()
     def close(self) -> None:
         if self.is_live:
             plt.ioff()

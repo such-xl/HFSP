@@ -1,6 +1,7 @@
-import gymnasium as gym
+import torch
 
-dim_1 = 5
-dim_2 = 5
-space = gym.MultiDiscrete([dim_1, dim_2])
-print(space)
+actions = torch.zeros([10,5])
+for i in range(10):
+    action = torch.randint(i+1,i+2,[10]).unsqueeze(-1)
+    actions[:,i] = action
+    print(actions)

@@ -30,7 +30,7 @@ class D3QN(nn.Module):
             nn.LeakyReLU(),
         )
         self.j_m_linear = nn.Sequential(
-            nn.Linear(11,32),
+            nn.Linear(3,32),
             nn.LeakyReLU(),
             nn.Linear(32,64),
             nn.LeakyReLU(),
@@ -58,71 +58,53 @@ class D3QN(nn.Module):
         Q = V + normalized_A
         return Q
 
-class PolicyNet(nn.modules):
+class PolicyNet(nn.Module):
+    def __init__(self,state_dim,action_dim,num_heads):
+        super().__init__()
+        self.attention_0 = nn.MultiheadAttention(embed_dim=state_dim,num_heads=num_heads)
+        self.feed_forward = nn.Sequential(
+            nn.Linear(state_dim,2*state_dim),
+            nn.LeakyReLU(),
+            nn.Linear(2*state_dim,state_dim),
+        )
+        self.attention_1 = nn.MultiheadAttention(embed_dim=state_dim,num_heads=num_heads)
+        self.feed_forward_1 = nn.Sequential(
+            nn.Linear(state_dim,2*state_dim),
+            nn.LeakyReLU(),
+            nn.Linear(2*state_dim,state_dim),
+        )
+        self.norm_0 = nn.LayerNorm(state_dim)
+        self.norm_1 = nn.LayerNorm(state_dim)
+        self.output_linear = nn.Linear(state_dim,action_dim)
+    def forward(self,state_0,state_1,state_mask):
+        state_embedding, _ = self.attention_0(state_0,state_0,state_0,attn_mask=state_mask)
+        state_embedding = self.feed_forward(state_embedding)
+        state_embedding = self.norm_0(state_embedding)
+        state_embedding, _ = self.attention_1(state_1,state_embedding,state_embedding)
+        state_embedding = self.feed_forward_1(state_embedding)
+        state_embedding = self.norm_1(state_embedding)
+        logits = self.output_linear(state_embedding)
+        logits = self.j_m_linear(output)
+        # logits = logits + (action_mask-1) * 1e9
+        probs = nn.functional.softmax(logits,dim=-1)
+        return probs
+class QNet(nn.Module):
     def __init__(self,state_dim,machine_dim,action_dim):
         super().__init__()
-        self.machine_dim = machine_dim
-        self.job_linear = nn.Sequential(
-            nn.Linear(state_dim,32),
+        self.Q_linear = nn.Sequential(
+            nn.Linear(15*state_dim+10,512),
             nn.LeakyReLU(),
-            nn.Linear(32,1),
+            nn.Linear(512,256),
             nn.LeakyReLU(),
-            nn.Flatten()
+            nn.Linear(256,128),
+            nn.LeakyReLU(),
+            nn.Linear(128,1)
         )
-        self.machine_linear = nn.Sequential(
-            nn.Linear(machine_dim,16),
-            nn.LeakyReLU(),
-            nn.Linear(16,1),
-            nn.LeakyReLU(),
-        )
-        self.j_m_linear = nn.Sequential(
-            nn.Linear(11,32),
-            nn.LeakyReLU(),
-            nn.Linear(32,action_dim),
-            nn.LeakyReLU(),
-        )
-    def forward(self,state,action_mask):
-        job_state = state[:,:-1,:]
-        machine_state = state[:,-1,:self.machine_dim]
-        job_embedding = self.job_linear(job_state).squeeze(1)
-        machine_embedding = self.machine_linear(machine_state)
-        output = torch.cat([job_embedding,machine_embedding],dim=-1)
-        logits = self.j_m_linear(output)
-        logits = logits * (action_mask-1) * 1e9
-        probs = nn.F.softmax(logits,dim=-1)
-        return probs
-class PolicyNet(nn.modules):
-    def __init__(self,state_dim,machine_dim,action_dim):
-        super().__init__()
-        self.machine_dim = machine_dim
-        self.job_linear = nn.Sequential(
-            nn.Linear(state_dim,32),
-            nn.LeakyReLU(),
-            nn.Linear(32,1),
-            nn.LeakyReLU(),
-            nn.Flatten()
-        )
-        self.machine_linear = nn.Sequential(
-            nn.Linear(machine_dim,16),
-            nn.LeakyReLU(),
-            nn.Linear(16,1),
-            nn.LeakyReLU(),
-        )
-        self.j_m_linear = nn.Sequential(
-            nn.Linear(11,32),
-            nn.LeakyReLU(),
-            nn.Linear(32,action_dim),
-            nn.LeakyReLU(),
-        )
-    def forward(self,state,action_mask):
-        job_state = state[:,:-1,:]
-        machine_state = state[:,-1,:self.machine_dim]
-        job_embedding = self.job_linear(job_state).squeeze(1)
-        machine_embedding = self.machine_linear(machine_state)
-        output = torch.cat([job_embedding,machine_embedding],dim=-1)
-        logits = self.j_m_linear(output)
-        logits = logits * (action_mask-1) * 1e9
-        probs = nn.F.softmax(logits,dim=-1)
-        return probs
+    def forward(self,state,actions):
+        state = state.view(state.size(0),-1)
+        actions = actions.view(actions.size(0),-1)
+        output = torch.cat([state,actions],dim=-1)
+        Q = self.Q_linear(output)
+        return Q
 
 

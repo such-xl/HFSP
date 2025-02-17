@@ -4,43 +4,42 @@ import random
 
 import torch
 
-from scheduling_env.agents import Agent
+from scheduling_env.agents import Agent, SACAgent
 from scheduling_env.training_env import TrainingEnv
 import matplotlib
 # matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 model_params = {
-    "state_dim": 12,
-    "machine_dim": 10,
+    "state_dim": 16,
+    "machine_dim": 16,
     "state_embedding_dim": 12,
     "macihne_embedding_dim": 12,
     "machine_state_dim": 4,
-    "action_dim": 11,
+    "action_dim": 5,
     "num_heads": 4,
-    "job_seq_len": 10,
-    "machine_seq_len": 10,
+    "job_seq_len": 20,
+    "machine_seq_len": 15,
 
     "dropout": 0.05,
 }
 train_params = {
-    "num_episodes": 100,
-    "batch_size": 256,
-    "learning_rate": 5e-3,
-    "epsilon_start": 0.00001,
-    "epsilon_end": 0.0000001,
-    "epsilon_decay": 20_000,
+    "num_episodes": 2000,
+    "batch_size": 512,
+    "learning_rate": 6e-6,
+    "epsilon_start": 1,
+    "epsilon_end": 0.005,
+    "epsilon_decay": 50 * 3000,
     "gamma": 1,
-    "tau": 0.5,
+    "tau": 0.005,
     "target_update": 5000,
     "buffer_size": 50_000,
-    "minimal_size": 10_000,
+    "minimal_size": 1_000,
     "scale_factor": 0.01,
     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
     "reward_type": 2,
 }
-
-agent = Agent(model_params, train_params)
+agent = SACAgent(model_params, train_params)
 agent.load_model(f"models/model{train_params['reward_type']}rf.pth")
 env = TrainingEnv(
             action_dim=model_params["action_dim"],
@@ -55,7 +54,7 @@ for i in range(train_params['num_episodes']):  # episodes
     start_time = time.time()
     print('episode:', i)
     G = 0
-    job_name = random.choice(['vla19.fjs'])
+    job_name = random.choice(['Mk10.fjs'])
     job_path = train_data_path + job_name
     state, action_mask = env.reset(jobs_path=job_path)
     done, truncated = False, False
@@ -82,3 +81,8 @@ record_reward_table = pd.DataFrame(record_reward, columns=['dataset', 'episode',
 sns.boxenplot(record_reward_table, x='done', y='timestep', hue='dataset')
 plt.savefig('ddlx.png')
 print(record_reward_table.groupby(['dataset', 'done']).agg('mean'))
+
+from scheduling_env.utils import Plotter
+plotter = Plotter(False)
+plotter.gant_chat(env.draw_data)
+
