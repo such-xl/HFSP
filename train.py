@@ -9,7 +9,7 @@ import json
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.utils import StateNorm, Plotter
 from scheduling_env.replay_buffer import ReplayBuffer
-from scheduling_env.agents import Agents
+from scheduling_env.agents import Agent
 from scheduling_env import basic_scheduling_algorithms
 
 
@@ -26,8 +26,8 @@ class Train():
             max_job_num=model_params["job_seq_len"]
         )
 
-        agents: Agents = Agents(train_params,model_params)
-
+        # agents: Agents = Agents(train_params,model_params)
+        agent = Agent(train_params, model_params)
         replay_buffer: ReplayBuffer = ReplayBuffer(
             capacity=train_params["buffer_size"],
             state_seq_len=model_params["job_seq_len"],
@@ -41,34 +41,35 @@ class Train():
         for name in jobs_name:
             record_reward[name] = []
             record_makespan[name] = []
+        step_done = 0
         for i in range(train_params['num_episodes']):  # episodes
             start_time = time.time()
             print('episode:', i)
             G = 0
             # Generate an FJSS instance from teh emulating environment
             # job_name = random.choice(jobs_name)
-            job_name = random.choice(['rla21.fjs'])
+            job_name = random.choice(['vla20.fjs'])
             job_path = train_data_path + job_name
             state = env.reset(jobs_path=job_path)
             done, truncated = False, False
             while not done and not truncated:
                 # 采样一个动作
-
-                actions = agents.take_actions([state])
+                step_done += 1
+                action = agent.take_action(state,step_done)
 
                 # 执行动作
-                next_state,  reward, done, truncated = env.step(actions)
+                next_state,  reward, done, truncated = env.step(action)
                 G += reward
                 # 存储经验
                 # action = [1 if i == action else 0 for i in range(model_params['action_dim'])]
                 # action = [action, action_mask]
                 # if done or truncated or state != next_state or np.random.rand() < 0.01:  # 要做优先经验回放更好
-                replay_buffer.add((state, actions, next_state, reward, done))
+                # replay_buffer.add((state, action, next_state, reward, done))
                 state = next_state
 
-                if replay_buffer.size() >= train_params['minimal_size']:
+                if False and replay_buffer.size() >= train_params['minimal_size']:
                     transition = replay_buffer.sample(batch_size=train_params['batch_size'])
-                    agents.update(transition)
+                    agent.update(transition)
             data = [x.draw_data for x in env._machine_list]
             plot = Plotter(False)
             plot.machine_gant_chat(data)
@@ -78,8 +79,6 @@ class Train():
             print(job_name)
             print('time:', env.time_step, '||G: ', G, '||\ttimestep/s:', env.time_step / (time.time() - start_time),
                   "||\tepsilon:")
-            dd = [agent.alpha for agent in agents.agents]
-            print(dd)
             print('=================================')
         
         # agent.save_model(f"models/model{train_params['reward_type']}rf.pth")
@@ -102,7 +101,7 @@ model_params = {
     "dropout": 0.05,
 }
 train_params = {
-    "num_episodes": 1000,
+    "num_episodes": 100,
     "batch_size": 512,
     "learning_rate": 6e-6,
     "epsilon_start": 1,
@@ -115,6 +114,7 @@ train_params = {
     "minimal_size": 1_000,
     "scale_factor": 0.01,
     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
+    "reward_type": 0,
 }
 trainer = Train()
 trainer.train_model(model_params, train_params)

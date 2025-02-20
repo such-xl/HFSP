@@ -5,50 +5,18 @@ import numpy as np
 import copy
 from .model import D3QN,PolicyNet,QNet
 from .utils import StateNorm
-# model_params = {
-#     "state_dim": 18,
-#     "machine_dim": 4,
-#     "action_dim": 32,
-#     "num_heads": 1,
-#     "job_seq_len": 30,
-#     "machine_seq_len": 16,
-#     "dropout": 0.1,
-# }
-# train_params = {
-#     "num_episodes": 100,
-#     "batch_size": 512,
-#     "learning_rate": 1e-6,
-#     "epsilon_start": 1,
-#     "epsilon_end": 1,
-#     "epsilon_decay": 500,
-#     "gamma": 1,
-#     "tau": 0.005,
-#     "target_update": 1000,
-#     "buffer_size": 10_000,
-#     "minimal_size": 1000,
-#     "scale_factor": 0.01,
-#     "device": torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
-#     "reward_type": 0,
-# }
+
 class Agent():
-    def __init__(self,model_params,train_params) -> None:
+    def __init__(self,train_params,model_params) -> None:
         
         self.device = train_params['device']
-        self.main_net = D3QN(
-            state_dim=model_params['state_dim'],
-            machine_dim=model_params['machine_dim'],
-            action_dim=model_params['action_dim'],
-        ).to(self.device)
+        self.main_net = None
 
-        self.target_net = D3QN(
-            state_dim=model_params['state_dim'],
-            machine_dim=model_params['machine_dim'],
-            action_dim=model_params['action_dim'],
-        ).to(self.device)
+        self.target_net = None
 
-        self.target_net.load_state_dict(self.main_net.state_dict())
+        # self.target_net.load_state_dict(self.main_net.state_dict())
         
-        self.optimizer = torch.optim.AdamW(self.main_net.parameters(), lr=train_params['learning_rate'])
+        # self.optimizer = torch.optim.AdamW(self.main_net.parameters(), lr=train_params['learning_rate'])
         self.machine_seq_len = model_params['machine_seq_len']
         self.machine_dim = model_params['machine_dim']
         self.action_dim = model_params['action_dim']
@@ -62,15 +30,13 @@ class Agent():
         self.count = 0
 
 
-    def take_action(self,state,action_mask,step_done,):
+    def take_action(self,state,step_done,):
 
         self.eps_threshold = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(
             -1. * step_done / self.epsilon_decay)
         
-        if np.random.rand() < self.eps_threshold:
-            available_actions = np.where(action_mask)[0]
-            action = np.random.choice(available_actions)
-            return action
+        if True or np.random.rand() < self.eps_threshold:
+            return np.random.randint(0,self.action_dim-1)
         else:
             with torch.no_grad():
                 state = torch.as_tensor(state).to(self.device,dtype=torch.float).unsqueeze(0)

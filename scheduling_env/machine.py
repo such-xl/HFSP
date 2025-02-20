@@ -22,12 +22,6 @@ class Machine(Node):
         self._idle_time = 0 # 空闲时间
         self._time_step = 0 # 记录全局时间
         self._last_decison_time = -1 # 记录上次决策时间
-        # self._state = [
-        #     [1,0,0,0], # 空闲
-        #     [0,1,0,0], # 忙碌
-        #     [0,0,1,0], # 故障
-        #     [0,0,0,1], # 未定义
-        # ]
         self._state = [1 if self._id-1==i else 0 for i in range(10)]
         self.draw_data = []
     def get_state(self):

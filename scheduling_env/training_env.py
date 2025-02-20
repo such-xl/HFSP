@@ -39,14 +39,53 @@ class TrainingEnv():
             self._machine_list.append(machine)
             machine = machine.next
 
-    def is_decision_machine(self,agent_id):
-        """是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策"""
+    def is_decision_machine(self,machine):
+        """
+        是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策
+        """
+        if not machine.is_idle() or machine.step_decision_made(self._time_step):
+            return False
         job :Job = self._jobs.head
         while job:
-            if job.is_wating_for_machine() and job.match_machine(agent_id):
+            if job.is_wating_for_machine() and job.match_machine(machine.id):
                 return True
             job = job.next
         return False
+    def get_decsion_machines(self):
+        """
+            获取需要做出决策的机器
+        """
+        decision_machines = []
+        machine:Machine = self._machines.head
+        while machine:
+            if self.is_decision_machine(machine):
+                decision_machines.append(machine)
+            machine = machine.next
+        return decision_machines
+    def reset(self,jobs_path:str):
+        """
+            重置环境
+            reutrn:
+                state: 当前job环境状态
+                machine_action: 决策机器的状态
+                action_mask: 机器的动作mask
+        """
+        self._jobs = JobList()
+        self._machines = None
+        self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
+        self._job_list = []
+        self._makespan_i = [0 for _ in range(self._machine_num)]
+        decision_machines = self.get_decsion_machines()
+        self._current_machine = decision_machines[0]
+        # job_list
+        job:Job = self._jobs.head
+        while job:
+            self._job_list.append(job)
+            job = job.next
+        self._time_step = 0
+        state  = self.get_state_i(self._current_machine.id)
+        self.draw_data = [[] for _ in range(self._job_num)] 
+        return state
     def run(self):
         """
             所有忙碌agent和job更新一个time_step,使得必产生空闲机器
@@ -74,117 +113,56 @@ class TrainingEnv():
         while not done and not truncated and not self.is_any_machine_need_to_decision(): # 没有结束且没有空闲机器，继续
             done,truncated = self.run()
         return done,truncated
-    def reset(self,jobs_path:str):
-        """
-            重置环境
-            reutrn:
-                state: 当前job环境状态
-                machine_action: 决策机器的状态
-                action_mask: 机器的动作mask
-        """
-        self._jobs = JobList()
-        self._machines = None
-        self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
-        self._job_list = []
-        self._makespan_i = [0 for _ in range(self._machine_num)]
-        # job_list
-        job:Job = self._jobs.head
-        while job:
-            self._job_list.append(job)
-            job = job.next
-        self._time_step = 0
-        state  = self.get_state()
-        self.draw_data = [[] for _ in range(self._job_num)] 
-        self.span = 0 
-        return state
-    def get_state(self):
 
-        state = [job.get_state() for job in self._job_list]
-
-        return state
-    
-    def step(self,actions):
-        for machine,action in zip(self._machine_list,actions):
-            if not machine.is_idle():
-                continue
-            if action == self._action_dim - 1:
-                self.spans[machine.id-1] = self._time_step+1
-            else:
-                if action == 3:
-                    job_index = LPT(self._job_list,machine.id)
-                elif action == 2:
-                    job_index = SPT(self._job_list,machine.id)
-                elif action == 1:
-                    job_index = LRPT(self._job_list,machine.id)
-                elif action == 0:
-                    job_index = SRPT(self._job_list,machine.id)
-                if job_index == -1:
-                    self.spans[machine.id-1] = self._time_step+1
-                    continue
-                machine.load_job(self._job_list[job_index],self._time_step)
-                self.spans[machine.id-1] =self._time_step + self._job_list[job_index].get_t_process(machine.id)
+    def get_state_i(self,macine_id):
+        """
+            获取macine i 的 obs
+        """
+        state_i = [
+            self._job_list[SPT(self._job_list,macine_id)].get_state_code(),
+            self._job_list[LPT(self._job_list,macine_id)].get_state_code(),
+            self._job_list[SRPT(self._job_list,macine_id)].get_state_code(),
+            self._job_list[LRPT(self._job_list,macine_id)].get_state_code()
+        ]
+        return state_i
+    def step(self,action):
+        if action == self._action_dim - 1:
+            ...
+        else:
+            if action == 0:
+                job_index = LPT(self._job_list,self._current_machine.id)
+            elif action == 1:
+                job_index = SPT(self._job_list,self._current_machine.id)
+            elif action == 2:
+                job_index = LRPT(self._job_list,self._current_machine.id)
+            elif action == 3:
+                job_index = SRPT(self._job_list,self._current_machine.id)
+        
+            self._current_machine.load_job(self._job_list[job_index],self._time_step)
+        self._current_machine.update_decision_time(self._time_step)
         done,truncated = False,False
         if not self.is_any_machine_need_to_decision(): # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
             done,truncated = self.run()
         # 要么结束，要么有机器需要采样动作
-        state = self.get_state() 
         if truncated:
             reward = -1000
         else:
-            new_span = max(self.spans)
-            reward = (self.span - new_span)/10.0
-            self.span = new_span
-        return state,reward,done,truncated
+            reward = -1
+        if not done and not truncated:
+            decision_machines = self.get_decsion_machines()
+            self._current_machine = decision_machines[0]
+            state_i = self.get_state_i(self._current_machine.id) 
+        else:
+            state_i = [[0 for _ in range(6)] for _ in range(4)]
+        return state_i,reward,done,truncated
 
     def is_any_machine_need_to_decision(self):
         machine:Machine = self._machines.head
         while machine:
-            if machine.is_idle() and self.is_decision_machine(machine.id):
+            if machine.is_idle() and self.is_decision_machine(machine):
                 return True
             machine = machine.next
         return False
-    def reward_func_0(self,scale_factor,done):
-        """
-          每步返回-1的奖励
-        """ 
-        return 1 if done else -0.01
-    def reward_func_1(self):
-        """
-            返回in_progress_jobs的相对延迟的率
-        """
-        count = 0
-        delay_rate = 0
-        for job in self._job_list:
-            if job.is_completed():
-                continue
-            count += 1
-            delay_rate = max(delay_rate,job.current_progress_remaining_time())
-        return -delay_rate * 0.01 if count else (1/self._time_step)*300
-    def reward_func_2(self,scale_factor,actions):
-        """
-            机器平均空闲率
-        """
-        idle_machine:Machine = self._idle_machines.head
-        busy_machine:Machine = self._busy_machines.head
-
-        idle_rate = 0
-        while idle_machine:
-            idle_rate += idle_machine.get_idle_time(self.time_step)
-            idle_machine = idle_machine.next
-        while busy_machine:
-            idle_rate += busy_machine.get_idle_time(self.time_step)
-            busy_machine = busy_machine.next
-        machine_counts = self._idle_machines.length + self._busy_machines.length
-        r1 = -idle_rate/machine_counts*scale_factor if machine_counts else 0
-        uncompleted_job:Job = self._uncompleted_jobs.head
-        latest_finnish = 0
-        while uncompleted_job:
-            latest_finnish = max(latest_finnish,uncompleted_job.current_progress_remaining_time())
-            uncompleted_job = uncompleted_job.next
-
-        r2 = -math.log(latest_finnish*scale_factor+1) if latest_finnish else 0
-        r3 = -actions.count(self._action_dim-1)/len(actions)
-        return (r1*0.2+r2*0.7+r3*0.1) + 0.5
     @property
     def action_space(self):
         return self._action_space
