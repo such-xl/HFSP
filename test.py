@@ -15,7 +15,7 @@ def moving_average(a, window_size):
     return np.concatenate((begin, middle, end))
 
 
-filename = 'record2rf'
+filename = 'record0rf'
 with open(f'logs/{filename}.json','r') as f:
     record = json.load(f)
 with open('logs/record_sjf2.json','r') as f:

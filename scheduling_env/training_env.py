@@ -146,8 +146,10 @@ class TrainingEnv():
         # 要么结束，要么有机器需要采样动作
         if truncated:
             reward = -1000
+        elif done:
+            reward = 8000/self._time_step
         else:
-            reward = -1
+            reward = -0.01
         if not done and not truncated:
             decision_machines = self.get_decsion_machines()
             self._current_machine = decision_machines[0]

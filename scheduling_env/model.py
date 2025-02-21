@@ -13,49 +13,27 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         return pe.unsqueeze(0)
 class D3QN(nn.Module):
-    def __init__(self,state_dim,machine_dim,action_dim):
+    def __init__(self,state_dim,action_dim):
         super().__init__()
-        self.machine_dim = machine_dim
-        self.job_linear = nn.Sequential(
-            nn.Linear(state_dim,32),
+        self.linear = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(state_dim,64),
             nn.LeakyReLU(),
-            nn.Linear(32,1),
+            nn.Linear(64,128),
             nn.LeakyReLU(),
-            nn.Flatten()
+            nn.Linear(128,64)
         )
-        self.machine_linear = nn.Sequential(
-            nn.Linear(machine_dim,16),
-            nn.LeakyReLU(),
-            nn.Linear(16,1),
-            nn.LeakyReLU(),
-        )
-        self.j_m_linear = nn.Sequential(
-            nn.Linear(3,32),
-            nn.LeakyReLU(),
-            nn.Linear(32,64),
-            nn.LeakyReLU(),
-        )
+
         self.A_net = nn.Linear(64,action_dim)
         self.V_net = nn.Linear(64,1)
-    def forward(self,state,action_mask):
-        job_state = state[:,:-1,:]
-        # job_state = job_state.view(job_state.size(0),-1)
-        machine_state = state[:,-1,:self.machine_dim]
-        job_embedding = self.job_linear(job_state).squeeze(1)
-        machine_embedding = self.machine_linear(machine_state)
-        output = torch.cat([job_embedding,machine_embedding],dim=-1)
-        output = self.j_m_linear(output)
+    def forward(self,state):
+        state_embed = self.linear(state)
         # A Net
-        A = self.A_net(output)
+        A = self.A_net(state_embed)
         # V Net
-        V = self.V_net(output)
-        # 计算有效动作的均值
-        valid_A_mean = (A * action_mask).sum(dim=1, keepdim=True) / action_mask.sum(dim=1, keepdim=True)
+        V = self.V_net(state_embed)
 
-        # 对有效动作归一化
-        normalized_A = A - valid_A_mean
-
-        Q = V + normalized_A
+        Q = V + A - A.mean(dim=1,keepdim=True)
         return Q
 
 class PolicyNet(nn.Module):

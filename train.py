@@ -30,9 +30,8 @@ class Train():
         agent = Agent(train_params, model_params)
         replay_buffer: ReplayBuffer = ReplayBuffer(
             capacity=train_params["buffer_size"],
-            state_seq_len=model_params["job_seq_len"],
+            state_seq_len = model_params["state_seq_len"],
             state_dim=model_params["state_dim"],
-            machine_seq_len=model_params["machine_seq_len"],
         )
         train_data_path = self.data_path + 'train_data/'
         jobs_name = sorted(os.listdir(train_data_path))
@@ -61,24 +60,21 @@ class Train():
                 next_state,  reward, done, truncated = env.step(action)
                 G += reward
                 # 存储经验
-                # action = [1 if i == action else 0 for i in range(model_params['action_dim'])]
-                # action = [action, action_mask]
-                # if done or truncated or state != next_state or np.random.rand() < 0.01:  # 要做优先经验回放更好
-                # replay_buffer.add((state, action, next_state, reward, done))
+                replay_buffer.add((state, action, next_state, reward, done))
                 state = next_state
 
-                if False and replay_buffer.size() >= train_params['minimal_size']:
+                if replay_buffer.size() >= train_params['minimal_size']:
                     transition = replay_buffer.sample(batch_size=train_params['batch_size'])
                     agent.update(transition)
-            data = [x.draw_data for x in env._machine_list]
-            plot = Plotter(False)
-            plot.machine_gant_chat(data)
+            # data = [x.draw_data for x in env._machine_list]
+            # plot = Plotter(False)
+            # plot.machine_gant_chat(data)
             record_makespan[job_name].append(env.time_step)
             record_reward[job_name].append(G)
             print('=================================')
             print(job_name)
             print('time:', env.time_step, '||G: ', G, '||\ttimestep/s:', env.time_step / (time.time() - start_time),
-                  "||\tepsilon:")
+                  "||\tepsilon:", agent.eps_threshold)
             print('=================================')
         
         # agent.save_model(f"models/model{train_params['reward_type']}rf.pth")
@@ -92,7 +88,8 @@ class Train():
 
 
 model_params = {
-    "state_dim": 16,
+    "state_dim": 24,
+    "state_seq_len": 4,
     "machine_dim": 16,
     "action_dim": 5,
     "num_heads": 4,
@@ -101,7 +98,7 @@ model_params = {
     "dropout": 0.05,
 }
 train_params = {
-    "num_episodes": 100,
+    "num_episodes": 2000,
     "batch_size": 512,
     "learning_rate": 6e-6,
     "epsilon_start": 1,
