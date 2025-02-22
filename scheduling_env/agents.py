@@ -2,11 +2,9 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
-import copy
 from .model import D3QN,PolicyNet,QNet
-from .utils import StateNorm
-
-class Agent():
+from scipy.stats import beta
+class D3QNAgent():
     def __init__(self,train_params,model_params) -> None:
         
         self.device = train_params['device']
@@ -114,13 +112,37 @@ class SACAgent():
         self.device = train_params['device']
         self.policy = PolicyNet(
             state_dim=model_params['state_dim'],
+        ).to(self.device)
+
+        self.q1 = QNet(
+            state_dim=model_params['state_dim'],
+            machine_dim=model_params['machine_dim'],
+            action_dim=model_params['action_dim'],
+        ).to(self.device)
+        self.q2 = QNet(
+            state_dim=model_params['state_dim'],
+            machine_dim=model_params['machine_dim'],
+            action_dim=model_params['action_dim'],
+        ).to(self.device)
+        self.target_q1 = QNet(
+            state_dim=model_params['state_dim'],
+            machine_dim=model_params['machine_dim'],
+            action_dim=model_params['action_dim'],
+        ).to(self.device)
+        self.target_q2 = QNet(
+            state_dim=model_params['state_dim'],
             machine_dim=model_params['machine_dim'],
             action_dim=model_params['action_dim'],
         ).to(self.device)
 
+        self.target_q1.load_state_dict(self.q1.state_dict())
+        self.target_q2.load_state_dict(self.q2.state_dict())
+
+        self.q1_optimizer = torch.optim.AdamW(self.q1.parameters(), lr=train_params['learning_rate'])
+        self.q2_optimizer = torch.optim.AdamW(self.q2.parameters(), lr=train_params['learning_rate'])
 
         self.policy_optimizer = torch.optim.AdamW(self.policy.parameters(), lr=train_params['learning_rate'])
-        self.target_entropy = -model_params['action_dim']  # 目标熵，通常设置为负的动作维度
+        self.target_entropy = -1  # 目标熵，通常设置为负的动作维度
         self.log_alpha = torch.tensor(0.0, requires_grad=True)  # α 的对数形式，用于优化
         self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=6e-5)  # 优化器
 
@@ -134,18 +156,20 @@ class SACAgent():
     def take_action(self,state,deterministic = False):
         with torch.no_grad():
             state = torch.as_tensor(state).to(self.device,dtype=torch.float)
-            probs = self.policy(state).squeeze(0)
-            if deterministic:
-                action = torch.argmax(probs)
-                return action.cpu().item()
-            else:
-                action = torch.distributions.Categorical(probs).sample()
-                return action.cpu().item()
+            alpha, beta = self.forward(state)
+            action = beta.rvs(alpha.detach().numpy(), beta.detach().numpy()).cpu().item()
+            return action
     def get_batch_actions(self,state):
         probs = self.policy(state)
         actions = torch.distributions.Categorical(probs).sample()
         return actions
-    def update(self,states,q_values):
+    def update(self,transition):
+        
+        states = transition.states
+        actions = transition.actions.to(torch.int64)
+        rewards = transition.rewards.squeeze(-1)
+        dones = transition.dones.squeeze(-1)
+        next_states = transition.next_states
 
         probs = self.policy(states)
         policy_loss = (probs * (self.alpha * torch.log(probs + 1e-9) - q_values)).sum(dim=-1).mean()

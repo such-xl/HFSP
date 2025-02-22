@@ -88,8 +88,8 @@ class Train():
 
 
 model_params = {
-    "state_dim": 24,
-    "state_seq_len": 4,
+    "state_dim": 30,
+    "state_seq_len": 5,
     "machine_dim": 16,
     "action_dim": 5,
     "num_heads": 4,
@@ -98,9 +98,9 @@ model_params = {
     "dropout": 0.05,
 }
 train_params = {
-    "num_episodes": 2000,
+    "num_episodes": 3500,
     "batch_size": 512,
-    "learning_rate": 6e-6,
+    "learning_rate": 5e-6,
     "epsilon_start": 1,
     "epsilon_end": 0.005,
     "epsilon_decay": 50 * 3000,

@@ -31,6 +31,7 @@ class TrainingEnv():
     def get_jobs_from_file(self, jobs_path:str):
         self._machine_num = self._jobs.fetch_jobs_from_file(jobs_path)
         self.spans = [0 for _ in range(self._machine_num)]
+        self.max_span = 0
         self._job_num = self._jobs.length
         self._machines = MachineList(self._machine_num)
         machine:Machine = self._machines.head
@@ -109,25 +110,26 @@ class TrainingEnv():
                 done =  False
                 break
             job = job.next
-        truncated = False if self._time_step < 1500 else True
+        truncated = False if self._time_step < 2500 else True
         while not done and not truncated and not self.is_any_machine_need_to_decision(): # 没有结束且没有空闲机器，继续
             done,truncated = self.run()
         return done,truncated
 
-    def get_state_i(self,macine_id):
+    def get_state_i(self,machine_id):
         """
             获取macine i 的 obs
         """
         state_i = [
-            self._job_list[SPT(self._job_list,macine_id)].get_state_code(),
-            self._job_list[LPT(self._job_list,macine_id)].get_state_code(),
-            self._job_list[SRPT(self._job_list,macine_id)].get_state_code(),
-            self._job_list[LRPT(self._job_list,macine_id)].get_state_code()
+            self._job_list[SPT(self._job_list,machine_id)].get_state_code(),
+            self._job_list[LPT(self._job_list,machine_id)].get_state_code(),
+            self._job_list[SRPT(self._job_list,machine_id)].get_state_code(),
+            self._job_list[LRPT(self._job_list,machine_id)].get_state_code(),
+            [int(bit) for bit in bin(machine_id)[2:].zfill(6)]
         ]
         return state_i
     def step(self,action):
-        if action == self._action_dim - 1:
-            ...
+        if action == self._action_dim-1:
+            reward = -1/1200
         else:
             if action == 0:
                 job_index = LPT(self._job_list,self._current_machine.id)
@@ -139,23 +141,31 @@ class TrainingEnv():
                 job_index = SRPT(self._job_list,self._current_machine.id)
         
             self._current_machine.load_job(self._job_list[job_index],self._time_step)
+            # 更新spans矩阵
+            span = self._time_step+self._job_list[job_index].current_progress_remaining_time()
+            self.spans[self._current_machine.id-1] = span
+            reward = (self.max_span-span)/1200 if span > self.max_span else 0
+            self.max_span = max(self.max_span,span)
+
         self._current_machine.update_decision_time(self._time_step)
         done,truncated = False,False
         if not self.is_any_machine_need_to_decision(): # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
             done,truncated = self.run()
         # 要么结束，要么有机器需要采样动作
-        if truncated:
-            reward = -1000
-        elif done:
-            reward = 8000/self._time_step
-        else:
-            reward = -0.01
+        # if truncated:
+        #     reward = -1000
+        # elif done:
+        #     reward = 10000/self._time_step
+        # else:
+        #     reward = -0.001
         if not done and not truncated:
             decision_machines = self.get_decsion_machines()
             self._current_machine = decision_machines[0]
             state_i = self.get_state_i(self._current_machine.id) 
         else:
             state_i = [[0 for _ in range(6)] for _ in range(4)]
+            print(self.spans)
+            print(self.max_span)
         return state_i,reward,done,truncated
 
     def is_any_machine_need_to_decision(self):
