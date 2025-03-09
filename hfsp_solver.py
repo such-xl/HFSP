@@ -1,6 +1,7 @@
 import gymnasium as gym
 from stable_baselines3 import PPO
 from scheduling_env.hfsp import HFSPEnv
+
 gym.envs.register(
     id="HFSP-v0",
     entry_point="scheduling_env.hfsp:HFSPEnv",

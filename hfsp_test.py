@@ -12,7 +12,7 @@ gym.envs.register(
 )
 
 # Parallel environments
-env:HFSPEnv = gym.make("HFSP-v0")
+env: HFSPEnv = gym.make("HFSP-v0")
 
 model = PPO.load("ppo_cartpole")
 
