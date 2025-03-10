@@ -17,7 +17,7 @@ def train_async_mappo(
     data_path = (
         os.path.dirname(os.path.abspath(__file__)) + "/scheduling_env/data/train_data/"
     )
-    job_name = "vla20.fjs"
+    job_name = "Mk06.fjs"
     job_path = data_path + job_name
     record = {
         "reward": {},
@@ -89,7 +89,7 @@ def scheduling_algotithm(
     data_path = (
         os.path.dirname(os.path.abspath(__file__)) + "/scheduling_env/data/train_data/"
     )
-    job_name = "vla20.fjs"
+    job_name = "Mk06.fjs"
     job_path = data_path + job_name
     record = {
         "reward": {},
@@ -101,6 +101,7 @@ def scheduling_algotithm(
         record["utilization_rate"][f"agent_{i}"] = []
     for episode in range(num_episodes):
         G = {}
+        reward = 0
         for i in range(1, env._max_machine_num + 1):
             G[f"agent_{i}"] = 0
         obs_i = env.reset(job_path)
@@ -170,15 +171,15 @@ mappo = AsyncMAPPO(
     device=PARAMS["device"],
 )
 
-train_async_mappo(
-    env=env,
-    mappo=mappo,
-    num_episodes=PARAMS["num_episodes"],
-    batch_size=PARAMS["batch_size"],
-    epochs=10,
-    max_steps=200,
-)
-# scheduling_algotithm(
+# train_async_mappo(
 #     env=env,
+#     mappo=mappo,
 #     num_episodes=PARAMS["num_episodes"],
+#     batch_size=PARAMS["batch_size"],
+#     epochs=10,
+#     max_steps=200,
 # )
+scheduling_algotithm(
+    env=env,
+    num_episodes=PARAMS["num_episodes"],
+)

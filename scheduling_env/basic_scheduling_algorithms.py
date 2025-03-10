@@ -60,7 +60,7 @@ def LRPT(jobs: list[Job], machine_id: int) -> int:
     #     raise ValueError('Action is not valid(Action < 0)')
     return action
 
-def noname(jobs: list[Job], machine:Machine,machines_UR:list[float]) -> int:
+def noname(jobs: list[Job], machine:Machine,machines_UR:list[float]) -> Job:
     available_jobs = []
     for job in jobs:
         if job.is_wating_for_machine() and job.match_machine(machine.id):
@@ -71,6 +71,7 @@ def noname(jobs: list[Job], machine:Machine,machines_UR:list[float]) -> int:
     if U >= avg_Ur:
         return available_jobs[0]
     return available_jobs[-1]
-
+def noname2(jobs:list[Job],machines:list[Machine],machines_UR:list[float]) -> Job:
+    pass
 def random_action(jobs: list) -> int:
     return random.randint(0, len(jobs))

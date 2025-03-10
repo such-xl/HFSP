@@ -12,33 +12,42 @@ ur_sr = record_sr["utilization_rate"]
 
 values = []
 values_sr = []
-plt.figure(figsize=(10, 6))
 for v in ur.values():
     if len(v) > 0:
         values.append(v)
 for v in ur_sr.values():
     if len(v) > 0:
         values_sr.append(v)
-print(len(values))
-print(len(values_sr))
-values = np.array(values)
-values_sr = np.array(values_sr)
-print(values.shape)
-print(values_sr.shape)
-if True:
-    mean_values = np.mean(values, axis=0)  # 直接计算均值
-    mean_values = savgol_filter(mean_values, window_length=110, polyorder=2)
-    mean_values_sr = np.mean(values_sr, axis=0)  # 直接计算均值
-    mean_values_sr = savgol_filter(mean_values_sr, window_length=110, polyorder=2)
-    plt.plot(mean_values, label="Mean Reward", color="red", linestyle="--")
-    plt.plot(mean_values_sr, label="Mean Reward SR", color="blue", linestyle="--")
+mean_ur = np.mean(values,axis=0)
+std_ur = np.std(values,axis=0)
+mean_ur_sr = np.mean(values_sr,axis=0)
+std_ur_sr = np.std(values_sr,axis=0)
+mean_ur = savgol_filter(mean_ur,window_length=110,polyorder=2)
+mean_ur_sr = savgol_filter(mean_ur_sr,window_length=110,polyorder=2)
+std_ur = savgol_filter(std_ur,window_length=110,polyorder=2)
+std_ur_sr = savgol_filter(std_ur_sr,window_length=110,polyorder=2)
 
-    plt.xlabel("Episode")
-    plt.ylabel("Mean UR")
-    plt.title("Mean Agent UR")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-    plt.savefig("UR2.png")
-else:
-    print("所有agent的reward数据都为空，无法绘制均值图。")
+
+plt.figure(figsize=(10, 6))
+plt.plot(mean_ur, label="Mean UR by RL", color="blue", linestyle=":")
+plt.plot(mean_ur_sr, label="Mean UR by SR", color="red", linestyle="--")
+
+plt.xlabel("Episode")
+plt.ylabel("Mean Utilization")
+plt.title("Mean Agent Utilization")
+plt.legend()
+plt.grid(True)
+plt.show()
+plt.savefig("Mean_Utilization.png")
+
+plt.figure(figsize=(10, 6))
+plt.plot(std_ur, label="Mean UR by RL", color="blue", linestyle=":")
+plt.plot(std_ur_sr, label="Mean UR by SR", color="red", linestyle="--")
+
+plt.xlabel("Episode")
+plt.ylabel("Std Utilization")
+plt.title("Std Agent Utilization")
+plt.legend()
+plt.grid(True)
+plt.show()
+plt.savefig("Std_Utilization.png")

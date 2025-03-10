@@ -54,7 +54,7 @@ for values in reward.values():
 
 if all_values:
     mean_values = np.mean(all_values, axis=0)  # 直接计算均值
-    mean_values = savgol_filter(mean_values, window_length=110, polyorder=2)
+    mean_values = savgol_filter(mean_values, window_length=110, polyorder=3)
     plt.plot(mean_values, label="Mean Reward", color="red", linestyle="--")
 
     plt.xlabel("Episode")
@@ -63,6 +63,6 @@ if all_values:
     plt.legend()
     plt.grid(True)
     plt.show()
-    plt.savefig("reward2.png")
+    plt.savefig("reward.png")
 else:
     print("所有agent的reward数据都为空，无法绘制均值图。")
