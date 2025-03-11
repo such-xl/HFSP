@@ -103,22 +103,39 @@ class D3QN(nn.Module):
         return Q
 
 
-# 定义用于调度任务的CNN模型
-class SchedulingCNN(nn.Module):
-    def __init__(self, input_channels, num_filters, kernel_size, output_size):
-        super(SchedulingCNN, self).__init__()
-        
-        # 卷积层
-        self.conv = nn.Conv2d(in_channels=input_channels, out_channels=num_filters, kernel_size=kernel_size)
-        # 全连接层
-        self.fc = nn.Linear(num_filters * (10 - kernel_size + 1) * (10 - kernel_size + 1), output_size)
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# 共享表征层（多任务共享特征提取）
+class SharedRepresentation(nn.Module):
+    def __init__(self, input_dim, hidden_dim, shared_dim):
+        super(SharedRepresentation, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, shared_dim)
+        self.relu = nn.ReLU()
 
     def forward(self, x):
-        # 卷积 + ReLU
-        x = self.conv(x)
-        x = F.relu(x)
-        # 展平
-        x = torch.flatten(x, start_dim=1)
-        # 全连接层
-        x = self.fc(x)
-        return F.softmax(x, dim=1)
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        return x  # 输出通用表征
+
+# 多任务模型
+class MultiTaskModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, shared_dim, num_machines):
+        super(MultiTaskModel, self).__init__()
+        
+        # 共享表征层
+        self.shared_representation = SharedRepresentation(input_dim, hidden_dim, shared_dim)
+        
+        # 任务特定层
+        self.makespan_layer = nn.Linear(shared_dim, num_machines)  # 最小化加工时间
+        self.balance_layer = nn.Linear(shared_dim, num_machines)   # 均衡机器负载
+        self.urgent_layer = nn.Linear(shared_dim, num_machines)    # 处理紧急任务
+
+    def forward(self, state):
+        shared_features = self.shared_representation(state)
+        makespan_output = self.makespan_layer(shared_features)  # 选择机器
+        balance_output = self.balance_layer(shared_features)    # 选择机器
+        urgent_output = self.urgent_layer(shared_features)      # 选择机器
+        return makespan_output, balance_output, urgent_output

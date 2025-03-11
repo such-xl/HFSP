@@ -7,7 +7,7 @@ class JobStatus(Enum):
     RUNNING = 2
 class Job(Node):
     code_len = 0
-    def __init__(self,id:int,process_num:int,process_list:list,insert_time:int) -> None:
+    def __init__(self,id:int,process_num:int,process_list:list,machine_squ:list,insert_time:int) -> None:
         super().__init__(None)
         self._id = id #job序号,从1开始
         self._process_num = process_num         #job工序数
@@ -16,7 +16,8 @@ class Job(Node):
         self._status = JobStatus.IDLE             #表示这个作业空闲，等待被分配机器
         self._machine = None                   # 正在加工该job的机器id，0表示目前没有被加工
         self._t_process = 0                    # 当前工序需被加工的时间
-        self._t_processed = 0                  # 当前工序已经被加工时间
+        self._t_processed = 0                   # 当前工序已经被加工时间
+        self._machine_squ = machine_squ          # 机器序列  
         self._insert_time = insert_time        #进入环境的时间
         self._record = []                      #记录job加工过程
     def show(self):
@@ -162,21 +163,29 @@ class JobList(DoublyLinkList):
     def fetch_jobs_from_file(self,path:str):
         machine_num: int = 0
         with open(path,'r') as f:
-            _,machine_num = map(int,f.readline().split()[0:-1])
+            jobs_num,machine_num = map(int,f.readline().split()[0:-1])
+            job_info = [[] for _ in range(jobs_num)]
+            machine_squ = [[] for _ in range(jobs_num)]
             for job_id, line_str in enumerate(f, start=1):   
                 line = list(map(int, line_str.split()))
                 i,r = 1,1
                 procs: list[dict[int,int]] = []         # 工序列表
-                while i < len(line):
-                    #s = f'工序{r} '                                                                                                                                                                 
+                while i < len(line):                                                                                                                                                          
                     proc: dict[int,int] = {}            # 单个工序
                     for j in range(line[i]):
-                        #s +=f'机器{line[i+1+j*2]} 耗时{line[i+1+j*2+1]} || '
                         proc[line[i+1+j*2]]=line[i+1+j*2+1]
+                    if len(proc) > 1:
+                        for k,item in proc.items():
+                            job_info[job_id-1].append({k:item})
+                            machine_squ[job_id-1].append(k)
+                    else:
+                        job_info[job_id-1].append(proc)
+                        machine_squ[job_id-1].append(list(proc.keys())[0])
                     procs.append(proc)
                     r += 1
                     i  += (1+line[i]*2)
-                self.append(Job(id=job_id,process_num=r-1,process_list=procs,insert_time=0))
-        return machine_num
+                print(f'job {job_id} process_num:{r-1} process_list:{procs}')
+                # self.append(Job(id=job_id,process_num=r-1,process_list=procs,insert_time=0))
+        return machine_num,job_info,machine_squ
                 
 

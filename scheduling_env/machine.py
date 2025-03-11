@@ -8,7 +8,7 @@ class MachineStatus(Enum):
 
 from .utils import Node
 class Machine(Node):
-    def __init__(self,id:int) -> None:
+    def __init__(self,id:int,joblist:Job) -> None:
         '''
             status: 0:break, 1:idle, 2:working
         '''
@@ -16,6 +16,7 @@ class Machine(Node):
         self._id = id
         self._status = MachineStatus.IDLE
         self._job = None
+        self._job_list = joblist
         self._bin_code = self.get_bin_code()
         self._begin_idle_time = 0 # 开始等待时间
         self._end_idle_time = 0 # 结束等待时间
@@ -82,6 +83,7 @@ class Machine(Node):
         if self._status == MachineStatus.FAULT:
             raise ValueError('machine is fault')
         idle_time = 0
+
         if self._status == MachineStatus.RUNNING:
             idle_time = self._end_idle_time - self._begin_idle_time
         elif self._status == MachineStatus.IDLE:

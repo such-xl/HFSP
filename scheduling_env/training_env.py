@@ -1,7 +1,9 @@
 '''
+    完成机器选择作业
     多智能体作业调度训练环境
     1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
     2: 判断所有job是否完成 over if done else repeat 1
+    
 '''
 import math
 from .job import Job,JobList
@@ -24,12 +26,16 @@ class TrainingEnv():
         self._draw_data = None        #画图信息
         self._time_step = 0
         self._reward_type = reward_type
-        self._decision_machines:list[Machine] = None # 某時刻参与决策的所有机器
+        self._decision_machines:list[Machine] = None # 某时刻参与决策的所有机器
         self._job_list:list[Job] = None # 某时刻未完成的作业列表
 
 
     def get_jobs_from_file(self, jobs_path:str):
-        self._max_machine_num = self._uncompleted_jobs.fetch_jobs_from_file(jobs_path)
+        self._max_machine_num ,job_info,squ = self._uncompleted_jobs.fetch_jobs_from_file(jobs_path)
+        
+        print('max_machine_num:',self._max_machine_num)
+        print('job_info:',job_info)
+        print('squ:',squ)
         self._max_job_num = self._uncompleted_jobs.length
         self._machines = MachineList(self._max_machine_num)
         self._idle_machines = self._machines
@@ -38,6 +44,7 @@ class TrainingEnv():
             self._machine_list.append(machines_list)
             machines_list = machines_list.next
 
+    
     def is_decision_machine(self,agent_id):
         """是否是需要做出决策的agent,当agent只能选择空闲时,则不需要做出决策"""
         uncompleted_job :Job = self._uncompleted_jobs.head
@@ -107,7 +114,6 @@ class TrainingEnv():
             job = job.next
         self._time_step = 0
         # static_state = self.get_job_static_state()
-
         state,machine_action,action_mask = self.get_state()
         return state,machine_action,action_mask
     
