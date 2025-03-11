@@ -9,7 +9,6 @@ from scheduling_env.training_env import TrainingEnv
 from scheduling_env.utils import StateNorm,Plotter
 from scheduling_env.replay_buffer import ReplayBuffer
 from scheduling_env.agents import Agent
-from scheduling_env import basic_scheduling_algorithms
 
 class Train():
     def __init__(self):
@@ -58,9 +57,10 @@ class Train():
             G = 0
             #Generate an FJSS instance from teh emulating environment
             # job_name = random.choice(jobs_name)
-            job_name = random.choice(['rla36.fjs'])
+            job_name = random.choice(['sla01.fjs'])
             job_path = train_data_path+job_name
             state,machine_action,action_mask = env.reset(jobs_path=job_path)
+            print(machine_action)
             state,state_mask = state_norm.job_padding(state)
             machine_action,action_mask = state_norm.machine_action_padding(machine_action,action_mask)
             done = False

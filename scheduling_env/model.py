@@ -101,4 +101,24 @@ class D3QN(nn.Module):
         V = self.gule(self.V_net(output))
         Q = V + A - A.mean(dim=-1,keepdim=True)
         return Q
-    
+
+
+# 定义用于调度任务的CNN模型
+class SchedulingCNN(nn.Module):
+    def __init__(self, input_channels, num_filters, kernel_size, output_size):
+        super(SchedulingCNN, self).__init__()
+        
+        # 卷积层
+        self.conv = nn.Conv2d(in_channels=input_channels, out_channels=num_filters, kernel_size=kernel_size)
+        # 全连接层
+        self.fc = nn.Linear(num_filters * (10 - kernel_size + 1) * (10 - kernel_size + 1), output_size)
+
+    def forward(self, x):
+        # 卷积 + ReLU
+        x = self.conv(x)
+        x = F.relu(x)
+        # 展平
+        x = torch.flatten(x, start_dim=1)
+        # 全连接层
+        x = self.fc(x)
+        return F.softmax(x, dim=1)

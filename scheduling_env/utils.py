@@ -194,10 +194,10 @@ class StateNorm:
         mask[:len(data)] = False
         padded_data = np.zeros((self.job_seq_len,self.job_dim))
         data = np.array(data)
-        # if len(data)>0:
-        #     padded_data[:len(data),:] = data
-        # if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
-        #     mask[0] = False
+        if len(data)>0:
+            padded_data[:len(data),:] = data
+        if np.all(mask): # 如果全是填充，通过attention layer后会出现nan
+            mask[0] = False
         return padded_data*self.scale_factor,mask
     def machine_action_padding(self,machine_action,action_mask):
         for ma, am  in  zip(machine_action,action_mask):
