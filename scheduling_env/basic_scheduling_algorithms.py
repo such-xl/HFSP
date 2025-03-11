@@ -13,7 +13,7 @@ def SPT(jobs: list[Job], machine_id: int) -> int:
         if not job.is_wating_for_machine() or not job.match_machine(machine_id):
             continue
         c_t = job.get_t_process(machine_id)
-        action = i if c_t < min_t else action
+        action,min_t = (i,c_t) if c_t < min_t else (action,min_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')
     return action
@@ -27,7 +27,7 @@ def LPT(jobs: list[Job], machine_id: int) -> int:
         if not job.is_wating_for_machine() or not job.match_machine(machine_id):
             continue
         c_t = job.get_t_process(machine_id)
-        action = i if c_t > max_t else action
+        action,max_t = (i,c_t) if c_t > max_t else (action,max_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')
     return action
@@ -41,7 +41,7 @@ def SRPT(jobs: list[Job], machine_id: int) -> int:
         if not job.is_wating_for_machine() or not job.match_machine(machine_id):
             continue
         c_t = job.get_remaining_avg_time()
-        action = i if c_t < min_t else action
+        action,min_t = (i,c_t) if c_t < min_t else (action,min_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')
     return action
@@ -55,7 +55,7 @@ def LRPT(jobs: list[Job], machine_id: int) -> int:
         if not job.is_wating_for_machine() or not job.match_machine(machine_id):
             continue
         c_t = job.get_remaining_avg_time()
-        action = i if c_t > max_t else action
+        action,max_t = (i,c_t) if c_t > max_t else (action,max_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')
     return action

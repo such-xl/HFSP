@@ -171,15 +171,15 @@ mappo = AsyncMAPPO(
     device=PARAMS["device"],
 )
 
-# train_async_mappo(
-#     env=env,
-#     mappo=mappo,
-#     num_episodes=PARAMS["num_episodes"],
-#     batch_size=PARAMS["batch_size"],
-#     epochs=10,
-#     max_steps=200,
-# )
-scheduling_algotithm(
+train_async_mappo(
     env=env,
+    mappo=mappo,
     num_episodes=PARAMS["num_episodes"],
+    batch_size=PARAMS["batch_size"],
+    epochs=10,
+    max_steps=200,
 )
+# scheduling_algotithm(
+#     env=env,
+#     num_episodes=PARAMS["num_episodes"],
+# )
