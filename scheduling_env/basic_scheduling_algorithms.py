@@ -71,7 +71,22 @@ def noname(jobs: list[Job], machine:Machine,machines_UR:list[float]) -> Job:
     if U >= avg_Ur:
         return available_jobs[0]
     return available_jobs[-1]
-def noname2(jobs:list[Job],machines:list[Machine],machines_UR:list[float]) -> Job:
-    pass
+
+def noname_2(jobs,machine,machines_UR):
+    available_jobs = []
+    for job in jobs:
+        if job.is_wating_for_machine() and job.match_machine(machine.id):
+            available_jobs.append(job)
+
+    available_jobs.sort(key=lambda job: job.get_t_process(machine.id))
+    sorted_UR = machines_UR.copy()
+    sorted_UR.sort(reverse=True)
+    current_machine_ur = machines_UR[machine.id-1]
+    rank = sorted_UR.index(current_machine_ur)
+    percentile = rank / len(sorted_UR)
+    job_index = int(percentile * len(available_jobs))
+    return available_jobs[job_index]
+
 def random_action(jobs: list) -> int:
     return random.randint(0, len(jobs))
+

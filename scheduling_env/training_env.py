@@ -1,7 +1,7 @@
 """
-    多智能体作业调度训练环境
-    1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
-    2: 判断所有job是否完成 over if done else repeat 1
+多智能体作业调度训练环境
+1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
+2: 判断所有job是否完成 over if done else repeat 1
 """
 
 import random
@@ -191,7 +191,19 @@ class TrainingEnv:
             self._job_list[LPT(self._job_list, machine.id)].get_state_code(),
             self._job_list[SRPT(self._job_list, machine.id)].get_state_code(),
             self._job_list[LRPT(self._job_list, machine.id)].get_state_code(),
-            [machine.id,machine.get_utilization_rate(self._time_step),np.mean([agent.get_utilization_rate(self._time_step) for agent in self._machine_list]),self._time_step/100,0,0]
+            [
+                machine.id,
+                machine.get_utilization_rate(self._time_step),
+                np.mean(
+                    [
+                        agent.get_utilization_rate(self._time_step)
+                        for agent in self._machine_list
+                    ]
+                ),
+                self._time_step / 100,
+                0,
+                0,
+            ],
             # [int(bit) for bit in bin(machine_id)[2:].zfill(6)],
         ]
         return state_i
@@ -243,7 +255,8 @@ class TrainingEnv:
             # print(self.max_span)
         self.rewards[self._current_machine.id - 1] += reward
         return state_i, reward, done, truncated
-    def step_by_sr(self,job):
+
+    def step_by_sr(self, job):
         self._current_machine.update_decision_time(self._time_step)
         self._current_machine.load_job(job, self._time_step)
         done, truncated = False, False
@@ -267,6 +280,7 @@ class TrainingEnv:
             state_i = [[0 for _ in range(6)] for _ in range(5)]
         self.rewards[self._current_machine.id - 1] += reward
         return state_i, reward, done, truncated
+
     def is_any_machine_need_to_decision(self):
         machine: Machine = self._machines.head
         while machine:
@@ -290,11 +304,13 @@ class TrainingEnv:
         # return -np.abs(u_i - u_mean)
         # return u_i
         # return (utiliaction_rate/u_max) - lamda_2 * (np.abs())
+
     def compute_UR(self):
         utiliaction_rates = [
             agent.get_utilization_rate(self._time_step) for agent in self._machine_list
         ]
         return utiliaction_rates
+
     @property
     def action_space(self):
         return self._action_space

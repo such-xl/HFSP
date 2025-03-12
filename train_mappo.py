@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.MAPPO import AsyncMAPPO
-from scheduling_env.basic_scheduling_algorithms import noname
+from scheduling_env.basic_scheduling_algorithms import noname_2
 
 
 def train_async_mappo(
@@ -83,8 +83,10 @@ def train_async_mappo(
     with open("record.json", "w") as f:
         json.dump(record, f)
 
+
 def scheduling_algotithm(
-    env,num_episodes=1000, 
+    env,
+    num_episodes=1000,
 ):
     data_path = (
         os.path.dirname(os.path.abspath(__file__)) + "/scheduling_env/data/train_data/"
@@ -113,7 +115,7 @@ def scheduling_algotithm(
 
             active_agent_id = env._current_machine.id  # 获取当前需要决策的智能体
 
-            action = noname(env._job_list,env._current_machine,env.compute_UR())
+            action = noname_2(env._job_list, env._current_machine, env.compute_UR())
 
             next_obs, reward, done, truncated = env.step_by_sr(action)
 
@@ -127,9 +129,10 @@ def scheduling_algotithm(
             )
             machine = machine.next
         record["makespan"][f"episode_{episode}"] = env.time_step
-        print(f'episode {episode+1}: makespan {env.time_step}')
+        print(f"episode {episode+1}: makespan {env.time_step}")
     with open("record_sr.json", "w") as f:
         json.dump(record, f)
+
 
 PARAMS = {
     "num_episodes": 2000,
@@ -171,15 +174,15 @@ mappo = AsyncMAPPO(
     device=PARAMS["device"],
 )
 
-train_async_mappo(
-    env=env,
-    mappo=mappo,
-    num_episodes=PARAMS["num_episodes"],
-    batch_size=PARAMS["batch_size"],
-    epochs=10,
-    max_steps=200,
-)
-# scheduling_algotithm(
+# train_async_mappo(
 #     env=env,
+#     mappo=mappo,
 #     num_episodes=PARAMS["num_episodes"],
+#     batch_size=PARAMS["batch_size"],
+#     epochs=10,
+#     max_steps=200,
 # )
+scheduling_algotithm(
+    env=env,
+    num_episodes=PARAMS["num_episodes"],
+)
