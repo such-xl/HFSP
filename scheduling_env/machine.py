@@ -21,7 +21,11 @@ class Machine(Node):
         self._begin_idle_time = 0 # 开始等待时间
         self._end_idle_time = 0 # 结束等待时间
         self._idle_time = 0 # 空闲时间
-        self._job_list = []
+        self._t_process = 0 #当前机器加工时间
+    #获取所有机器的加工状态
+    def get_state(self,num_machines):
+        return [1 for _ in range(num_machines)] 
+    
     def get_bin_code(self):
         binary_str = bin(self._id)[2:]
         binary_list = [int(digit) for digit in binary_str]

@@ -7,7 +7,7 @@ class JobStatus(Enum):
     RUNNING = 2
 class Job(Node):
     code_len = 0
-    def __init__(self,id:int,process_num:int,process_list:list,machine_squ:list,insert_time:int) -> None:
+    def __init__(self,id:int,process_num:int,process_list:list,machine_squ:list,insert_time:int,) -> None:
         super().__init__(None)
         self._id = id #job序号,从1开始
         self._process_num = process_num         #job工序数
@@ -185,7 +185,7 @@ class JobList(DoublyLinkList):
                     r += 1
                     i  += (1+line[i]*2)
                 print(f'job {job_id} process_num:{r-1} process_list:{procs}')
-                # self.append(Job(id=job_id,process_num=r-1,process_list=procs,insert_time=0))
+                # self.append(Job(id=job_id,process_num=len(job_info[job_id-1]),process_list=job_info[job_id-1],insert_time=0))
         return machine_num,job_info,machine_squ
                 
 
