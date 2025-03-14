@@ -102,11 +102,6 @@ class D3QN(nn.Module):
         Q = V + A - A.mean(dim=-1,keepdim=True)
         return Q
 
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
 # 共享表征层（多任务共享特征提取）
 class SharedRepresentation(nn.Module):
     def __init__(self, input_dim, hidden_dim, shared_dim):

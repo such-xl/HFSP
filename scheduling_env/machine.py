@@ -8,7 +8,7 @@ class MachineStatus(Enum):
 
 from .utils import Node
 class Machine(Node):
-    def __init__(self,id:int,joblist:Job) -> None:
+    def __init__(self,id:int) -> None:
         '''
             status: 0:break, 1:idle, 2:working
         '''
@@ -16,16 +16,12 @@ class Machine(Node):
         self._id = id
         self._status = MachineStatus.IDLE
         self._job = None
-        self._job_list = joblist
+        # self._job_list = joblist
         self._bin_code = self.get_bin_code()
         self._begin_idle_time = 0 # 开始等待时间
         self._end_idle_time = 0 # 结束等待时间
         self._idle_time = 0 # 空闲时间
-        self._t_process = 0 #当前机器加工时间
-    #获取所有机器的加工状态
-    def get_state(self,num_machines):
-        return [1 for _ in range(num_machines)] 
-    
+        self._job_list = []
     def get_bin_code(self):
         binary_str = bin(self._id)[2:]
         binary_list = [int(digit) for digit in binary_str]

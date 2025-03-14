@@ -7,7 +7,7 @@ class JobStatus(Enum):
     RUNNING = 2
 class Job(Node):
     code_len = 0
-    def __init__(self,id:int,process_num:int,process_list:list,machine_squ:list,insert_time:int,) -> None:
+    def __init__(self,id:int,process_num:int,process_list:list,insert_time:int,) -> None:
         super().__init__(None)
         self._id = id #job序号,从1开始
         self._process_num = process_num         #job工序数
@@ -17,7 +17,7 @@ class Job(Node):
         self._machine = None                   # 正在加工该job的机器id，0表示目前没有被加工
         self._t_process = 0                    # 当前工序需被加工的时间
         self._t_processed = 0                   # 当前工序已经被加工时间
-        self._machine_squ = machine_squ          # 机器序列  
+        self._machine_squ = []          # 机器序列  
         self._insert_time = insert_time        #进入环境的时间
         self._record = []                      #记录job加工过程
     def show(self):
@@ -184,8 +184,8 @@ class JobList(DoublyLinkList):
                     procs.append(proc)
                     r += 1
                     i  += (1+line[i]*2)
-                print(f'job {job_id} process_num:{r-1} process_list:{procs}')
-                # self.append(Job(id=job_id,process_num=len(job_info[job_id-1]),process_list=job_info[job_id-1],insert_time=0))
+                # print(f'job {job_id} process_num:{r-1} process_list:{procs}')
+                self.append(Job(id=job_id,process_num= r-1,process_list=procs,insert_time=0))
         return machine_num,job_info,machine_squ
                 
 
