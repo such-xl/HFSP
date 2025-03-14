@@ -10,11 +10,12 @@ class JobStatus(Enum):
 
 class Job(Node):
     def __init__(
-        self, id: int, process_num: int, process_list: list, insert_time: int
+        self, id: int, type: int, process_num: int, process_list: list, insert_time: int
     ) -> None:
         super().__init__(None)
         self._id = id  # job序号,从1开始
         self._process_num = process_num  # job工序数
+        self._type = type
         self._process_list = (
             process_list  # job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         )
@@ -30,7 +31,7 @@ class Job(Node):
         获取job的状态编码 [job_id,状态[0,1,2],当前工序,当前工序的机器id,当前工序剩余加工时间,剩余工序数]
         """
         return [
-            self._id,
+            self._type,
             self._status.value,
             self._progress,
             0 if self._machine is None else self._machine.id,
@@ -159,6 +160,10 @@ class Job(Node):
         return self._id
 
     @property
+    def type(self):
+        return self._type
+
+    @property
     def process_num(self):
         return self.process_num
 
@@ -206,7 +211,7 @@ def fetch_job_info(path: str):
 
         _, machine_num = map(int, f.readline().split()[0:-1])
         job_info = []
-        for job_id, line_str in enumerate(f, start=1):
+        for type, line_str in enumerate(f, start=1):
 
             line = list(map(int, line_str.split()))
 
@@ -223,5 +228,5 @@ def fetch_job_info(path: str):
                 procs.append(proc)
                 r += 1
                 i += 1 + line[i] * 2
-            job_info.append({"id": job_id, "process_num": r - 1, "process_list": procs})
+            job_info.append({"type": type, "process_num": r - 1, "process_list": procs})
     return machine_num, job_info

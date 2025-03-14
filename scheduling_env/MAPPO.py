@@ -24,24 +24,29 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 定义Actor网络 - 策略网络
 class ActorNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, num_heads=4):
         super(ActorNetwork, self).__init__()
-        self.linear = nn.Sequential(
+        self.state_embedding = nn.Linear(input_dim, 2 * input_dim)
+        self.attention = nn.MultiheadAttention(
+            2 * input_dim, num_heads=num_heads, batch_first=True
+        )
+        self.mlp = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(input_dim, 2 * input_dim),
-            nn.LeakyReLU(),
             nn.Linear(2 * input_dim, input_dim),
             nn.LeakyReLU(),
-            nn.Linear(input_dim, input_dim // 2),
-            nn.LeakyReLU(),
-            nn.Linear(input_dim // 2, output_dim),
+            nn.Linear(input_dim, output_dim),  # 输出单个值
         )
 
-    def forward(self, x):
-        return F.softmax(self.linear(x), dim=-1)
+    def forward(self, x, mask=None):
+        x = self.state_embedding(x)
+        x = self.attention(x, x, x, key_padding_mask=mask)[0]
+        x = x[:, -1, :]
+        x = self.mlp(x)
+        x = x.masked_fill(mask, -1e9)
+        return F.softmax(x, dim=-1)
 
-    def get_action(self, state, available_actions=None):
-        probs = self.forward(state)
+    def get_action(self, state,mask, available_actions=None):
+        probs = self.forward(state,mask)
         # 如果提供了可用动作掩码，则应用它
         if available_actions is not None:
             # 将不可用动作的概率设为0
@@ -82,16 +87,18 @@ class CriticNetwork(nn.Module):
 
 # 经验回放缓冲区
 class ReplayBuffer:
-    def __init__(self, capacity):
+    def __init__(self, capacity, share):
         self.buffer = deque(maxlen=capacity)
+        self.share = share
 
     def push(self, experience):
-        if len(self.buffer) > 0:
+        if not self.share and len(self.buffer) > 0:
             # 将上一个经验的下一个状态设置为当前状态
-            self.buffer[-1][3] = experience[0]
-            self.buffer[-1][7] = experience[5]
-            self.buffer[-1][8] = experience[6]
-            self.buffer[-1][4] = False
+            self.buffer[-1][4] = experience[0]
+            self.buffer[-1][5] = experience[1]
+            self.buffer[-1][9] = experience[7]
+            self.buffer[-1][10] = experience[8]
+            self.buffer[-1][6] = False
         self.buffer.append(experience)
 
     def sample(self, batch_size):
@@ -124,6 +131,7 @@ class MAPPOAgent:
         buffer_capacity=10000,
         gae_lambda=0.95,
         num_heads=5,
+        share=False,
         device=torch.device("cpu"),
     ):
         self.agent_id = agent_id
@@ -137,8 +145,9 @@ class MAPPOAgent:
         self.value_coef = value_coef
         self.entropy_coef = entropy_coef
         self.gae_lambda = gae_lambda
+        self.share = share
         # 创建策略网络和价值网络
-        self.actor = ActorNetwork(obs_dim * obs_len, act_dim).to(device)
+        self.actor = ActorNetwork(obs_dim, act_dim).to(device)
         # 价值网络使用全局状态作为输入
         self.critic = CriticNetwork(global_state_dim, num_heads).to(device)
 
@@ -147,21 +156,22 @@ class MAPPOAgent:
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr)
 
         # 经验回放缓冲区
-        self.buffer = ReplayBuffer(buffer_capacity)
+        self.buffer = ReplayBuffer(buffer_capacity, share)
 
         # 旧策略，用于计算重要性采样比率
-        self.old_actor = ActorNetwork(obs_dim * obs_len, act_dim).to(device)
+        self.old_actor = ActorNetwork(obs_dim, act_dim).to(device)
         self.old_actor.load_state_dict(self.actor.state_dict())
 
-    def select_action(self, obs, available_actions=None):
+    def select_action(self, obs,obs_mask, available_actions=None):
         obs_tensor = torch.FloatTensor(obs).to(device).unsqueeze(0)
+        obs_mask = torch.BoolTensor(obs_mask).to(device).unsqueeze(0)
         # 将可用动作转换为张量(如果提供了)
         if available_actions is not None:
             available_actions = torch.FloatTensor(available_actions).to(device)
 
         with torch.no_grad():
             action, log_prob, entropy = self.actor.get_action(
-                obs_tensor, available_actions
+                obs_tensor,obs_mask, available_actions
             )
 
         return action, log_prob.cpu().numpy(), entropy.cpu().numpy()
@@ -176,9 +186,11 @@ class MAPPOAgent:
     def store_experience(
         self,
         obs,
+        obs_mask,
         action,
         reward,
         next_obs,
+        next_obs_mask,
         done,
         global_state,
         state_mask,
@@ -189,9 +201,11 @@ class MAPPOAgent:
         self.buffer.push(
             [
                 obs,
+                obs_mask,
                 action,
                 reward,
                 next_obs,
+                next_obs_mask,
                 done,
                 global_state,
                 state_mask,
@@ -230,21 +244,25 @@ class MAPPOAgent:
 
         # 提取经验数据
         obs_batch = np.array([x[0] for x in batch])
-        action_batch = np.array([x[1] for x in batch])
-        reward_batch = np.array([x[2] for x in batch])
-        next_obs_batch = np.array([x[3] for x in batch])
-        done_batch = np.array([x[4] for x in batch])
-        global_state_batch = np.array([x[5] for x in batch])
-        state_mask_batch = np.array([x[6] for x in batch])
-        next_global_state_batch = np.array([x[7] for x in batch])
-        next_state_mask_batch = np.array([x[8] for x in batch])
-        old_log_prob_batch = np.array([x[9] for x in batch])
+        obs_mask_batch = np.array([x[1] for x in batch])
+        action_batch = np.array([x[2] for x in batch])
+        reward_batch = np.array([x[3] for x in batch])
+        next_obs_batch = np.array([x[4] for x in batch])
+        next_obs_mask_batch = np.array([x[5] for x in batch])
+        done_batch = np.array([x[6] for x in batch])
+        global_state_batch = np.array([x[7] for x in batch])
+        state_mask_batch = np.array([x[8] for x in batch])
+        next_global_state_batch = np.array([x[9] for x in batch])
+        next_state_mask_batch = np.array([x[10] for x in batch])
+        old_log_prob_batch = np.array([x[11] for x in batch])
 
         # 转换为张量
         obs_tensor = torch.FloatTensor(obs_batch).to(device)
+        obs_mask_tensor = torch.BoolTensor(obs_mask_batch).to(device)
         action_tensor = torch.LongTensor(action_batch).to(device)
         reward_tensor = torch.FloatTensor(reward_batch).to(device)
         next_obs_tensor = torch.FloatTensor(next_obs_batch).to(device)
+        next_obs_mask_tensor = torch.BoolTensor(next_obs_mask_batch).to(device)
         done_tensor = torch.FloatTensor(done_batch).to(device)
         global_state_tensor = torch.FloatTensor(global_state_batch).to(device)
         state_mask_tensor = torch.BoolTensor(state_mask_batch).to(device)
@@ -298,6 +316,7 @@ class MAPPOAgent:
 
                 # 提取小批量数据
                 batch_obs = obs_tensor[batch_idx]
+                batch_obs_mask = obs_mask_tensor[batch_idx]
                 batch_action = action_tensor[batch_idx]
                 batch_old_log_prob = old_log_prob_tensor[batch_idx]
                 batch_advantage = advantages_tensor[batch_idx]
@@ -305,7 +324,7 @@ class MAPPOAgent:
                 batch_global_state = global_state_tensor[batch_idx]
                 batch_state_mask = state_mask_tensor[batch_idx]
                 # 计算当前策略的动作概率
-                probs = self.actor(batch_obs)
+                probs = self.actor(batch_obs, batch_obs_mask)
                 dist = Categorical(probs)
                 curr_log_prob = dist.log_prob(batch_action)
                 entropy = dist.entropy().mean()
@@ -350,7 +369,7 @@ class MAPPOAgent:
         self.update_old_policy()
 
         # 清空缓冲区
-        self.buffer = ReplayBuffer(self.buffer.buffer.maxlen)
+        self.buffer = ReplayBuffer(self.buffer.buffer.maxlen, self.share)
 
         # 计算平均损失
         n_updates = epochs * n_batches
@@ -402,6 +421,7 @@ class MAPPO:
                 buffer_capacity,
                 gae_lambda,
                 num_heads=num_heads,
+                share=True,
                 device=device,
             )
             self.agents = [agent] * n_agents
@@ -423,6 +443,7 @@ class MAPPO:
                     buffer_capacity,
                     gae_lambda,
                     num_heads,
+                    False,
                     device,
                 )
                 for i in range(n_agents)
@@ -534,16 +555,18 @@ class AsyncMAPPO(MAPPO):
             device,
         )
 
-    def select_action(self, obs, agent_id, available_actions=None):
+    def select_action(self, obs,obs_mask, agent_id, available_actions=None):
         """为当前活动智能体选择动作"""
-        return self.agents[agent_id].select_action(obs, available_actions)
+        return self.agents[agent_id].select_action(obs,obs_mask,available_actions)
 
     def store_experience(
         self,
         obs,
+        obs_mask,
         action,
         reward,
         next_obs,
+        next_obs_mask,
         done,
         global_state,
         state_mask,
@@ -555,9 +578,11 @@ class AsyncMAPPO(MAPPO):
         """存储当前活动智能体的经验"""
         self.agents[agent_id].store_experience(
             obs,
+            obs_mask,
             action,
             reward,
             next_obs,
+            next_obs_mask,
             done,
             global_state,
             state_mask,

@@ -1,77 +1,76 @@
 import random
 import numpy as np
-from scheduling_env.job import Job
-from scheduling_env.machine import Machine
+
 INF = 1e9
 
 
-def SPT(jobs: list[Job], machine_id: int) -> int:
+def SPT(jobs, machine_id: int) -> int:
     """当前工序最短处理时间优先"""
     min_t = INF
-    action = -1
-    for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
-            continue
+    aim_job = None
+    for job in jobs:
         c_t = job.get_t_process(machine_id)
-        action = i if c_t < min_t else action
-    # if action < 0:
-    #     raise ValueError('Action is not valid(Action < 0)')
-    return action
+        aim_job, min_t = (job, c_t) if c_t < min_t else (aim_job, min_t)
+    return aim_job
 
 
-def LPT(jobs: list[Job], machine_id: int) -> int:
+def LPT(jobs, machine_id: int) -> int:
     """当前工序最长处理时间优先"""
     max_t = -INF
-    action = -1
-    for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
-            continue
+    aim_job = None
+    for job in jobs:
         c_t = job.get_t_process(machine_id)
-        action = i if c_t > max_t else action
-    # if action < 0:
-    #     raise ValueError('Action is not valid(Action < 0)')
-    return action
+        aim_job, max_t = (job, c_t) if c_t > max_t else (aim_job, max_t)
+    return aim_job
 
 
-# 平均剩余最短处理时间优先
-def SRPT(jobs: list[Job], machine_id: int) -> int:
+def SRPT(jobs, machine_id: int) -> int:
+    """平均剩余最短处理时间优先"""
     min_t = INF
-    action = -1
-    for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
-            continue
+    aim_job = None
+    for job in jobs:
         c_t = job.get_remaining_avg_time()
-        action = i if c_t < min_t else action
-    # if action < 0:
-    #     raise ValueError('Action is not valid(Action < 0)')
-    return action
+        aim_job, min_t = (job, c_t) if c_t < min_t else (aim_job, min_t)
+    return aim_job
 
 
-def LRPT(jobs: list[Job], machine_id: int) -> int:
+def LRPT(jobs, machine_id: int) -> int:
     """平均剩余最长处理时间优先"""
     max_t = -INF
-    action = -1
-    for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
-            continue
-        c_t = job.get_remaining_avg_time()
-        action = i if c_t > max_t else action
-    # if action < 0:
-    #     raise ValueError('Action is not valid(Action < 0)')
-    return action
-
-def noname(jobs: list[Job], machine:Machine,machines_UR:list[float]) -> Job:
-    available_jobs = []
+    aim_job = None
     for job in jobs:
-        if job.is_wating_for_machine() and job.match_machine(machine.id):
-            available_jobs.append(job)
-    available_jobs.sort(key = lambda job: job.get_t_process(machine.id))
+        c_t = job.get_remaining_avg_time()
+        aim_job, max_t = (job, c_t) if c_t > max_t else (aim_job, max_t)
+    return aim_job
+
+
+def FIFO(jobs, machine_id: int) -> int:
+    insert_time = INF
+    aim_job = None
+    for job in jobs:
+        aim_job, insert_time = (
+            (job, job.insert_time)
+            if job.insert_time < insert_time
+            else (aim_job, insert_time)
+        )
+    return aim_job
+
+
+def noname(jobs, machine, machines_UR: list[float]):
+    sorted_jobs = sorted(jobs, key=lambda job: job.get_t_process(machine.id))
     avg_Ur = np.mean(machines_UR)
-    U = machines_UR[machine.id-1]
+    U = machines_UR[machine.id - 1]
     if U >= avg_Ur:
-        return available_jobs[0]
-    return available_jobs[-1]
-def noname2(jobs:list[Job],machines:list[Machine],machines_UR:list[float]) -> Job:
-    pass
-def random_action(jobs: list) -> int:
-    return random.randint(0, len(jobs))
+        return sorted_jobs[0]
+    return sorted_jobs[-1]
+
+
+def noname_2(jobs, machine, machines_UR):
+    sorted_Jobs = sorted(jobs, key=lambda job: job.get_t_process(machine.id))
+    sorted_UR = machines_UR.copy()
+    sorted_UR.sort(reverse=True)
+    current_machine_ur = machines_UR[machine.id - 1]
+    rank = sorted_UR.index(current_machine_ur)
+    percentile = rank / len(sorted_UR)
+    job_index = int(percentile * len(sorted_Jobs))
+    return sorted_Jobs[job_index]
