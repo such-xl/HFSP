@@ -60,7 +60,7 @@ class Train():
             job_name = random.choice(['ela01.fjs'])
             job_path = train_data_path+job_name
             state,machine_action,action_mask = env.reset(jobs_path=job_path)
-            print(machine_action)
+            # print(machine_action)
             state,state_mask = state_norm.job_padding(state)
             machine_action,action_mask = state_norm.machine_action_padding(machine_action,action_mask)
             done = False
@@ -69,7 +69,7 @@ class Train():
                 # 采样一个动作
                 actions,machine_action = agent.take_action(state,state_mask,machine_action,action_mask,step_done)
                 # 执行动作
-                next_state,next_machine_action,next_action_mask,reward,done = env.step(actions,machine_action,scale_factor)
+                next_state,next_machine_action,next_action_mask,reward,done = env.step(actions)
                 G += reward
                 next_state,next_state_mask = state_norm.job_padding(next_state)
                 next_machine_action,next_action_mask = state_norm.machine_action_padding(next_machine_action,next_action_mask)

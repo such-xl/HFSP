@@ -112,10 +112,13 @@ class TrainingEnv():
         self._time_step = 0
         # static_state = self.get_job_static_state()
         state,machine_action,action_mask = self.get_state()
+        # print(state)
         return state,machine_action,action_mask
     
-    def step(self,actions,machine_action,scale_factor):
+    def step(self,actions):
+        print("action",actions)
         for decision_machine,action in zip(self._decision_machines,actions):
+
             if action == self._action_dim-1:
                 continue
             decision_machine.update_end_idle_time(self._time_step) # 更新结束等待时间
@@ -131,6 +134,8 @@ class TrainingEnv():
         self._job_list = job_list
         reward = 0 if not done else -self.time_step*0.01
         state,machine_action,action_mask = self.get_state()
+        print(state)
+        print('++++++++++++++++++++++++++++')
         return  state,machine_action,action_mask,reward,done
         
         if self._reward_type == 0:
@@ -139,14 +144,6 @@ class TrainingEnv():
             reward = self.reward_func_1()
         elif self._reward_type == 2:
             reward = self.reward_func_2(scale_factor,actions) 
-   
-    # def get_job_static_state(self): #获取所有作业的加工信息
-    #     uncompleted_job:Job = self._uncompleted_jobs.head
-    #     state = []
-    #     while uncompleted_job:
-    #         state.append(uncompleted_job.get_state_encoding(self._max_machine_num))
-    #         uncompleted_job = uncompleted_job.next
-    #     return state
             
     def get_state(self):
         uncompleted_job:Job = self._uncompleted_jobs.head

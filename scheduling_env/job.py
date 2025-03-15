@@ -121,8 +121,14 @@ class Job(Node):
         job_state = [self._t_processed,self.get_process_remaining_time()]
         # print(job_state)
         cp_dict = self._process_list[self._progress-1] #当前工序加工信息dict
-        p1 = [cp_dict.get(i+1,0) if self._status == JobStatus.IDLE else cp_dict.get(self.machine.id) if i+1 == self.machine.id else 0  for i in range(machine_nums)]
-        p2 = [self._process_list[self._progress].get(i+1,0) if self._progress < self._process_num else 0 for i in range(machine_nums)]
+        p1 = [cp_dict.get(i+1,0) if self._status == JobStatus.IDLE \
+              else cp_dict.get(self.machine.id) \
+              if i+1 == self.machine.id \
+              else 0  \
+              for i in range(machine_nums)]
+        p2 = [self._process_list[self._progress].get(i+1,0) \
+              if self._progress < self._process_num else 0 \
+              for i in range(machine_nums)]
         # print(p1,p2)
         job_state += p1 + p2
         return job_state

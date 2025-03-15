@@ -22,6 +22,7 @@ class Machine(Node):
         self._end_idle_time = 0 # 结束等待时间
         self._idle_time = 0 # 空闲时间
         self._job_list = []
+        
     def get_bin_code(self):
         binary_str = bin(self._id)[2:]
         binary_list = [int(digit) for digit in binary_str]
