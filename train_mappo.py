@@ -6,7 +6,7 @@ import json
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.MAPPO import AsyncMAPPO
 
-from scheduling_env.basic_scheduling_algorithms import noname
+from scheduling_env.basic_scheduling_algorithms import noname_2
 
 
 def train_async_mappo(
@@ -51,7 +51,7 @@ def train_async_mappo(
                 reward,
                 next_obs_i,
                 next_obs_mask,
-                True,  # done
+                done if mappo.share_parameters else True,# done
                 global_state,
                 state_mask,
                 next_global_state,
@@ -88,54 +88,53 @@ def train_async_mappo(
         json.dump(record, f)
 
 
-def scheduling_algotithm(
-    env,
+def sr(
+    env: TrainingEnv,
     num_episodes=1000,
 ):
-
     record = {
         "reward": {},
         "utilization_rate": {},
         "makespan": {},
     }
-    for i in range(1, env._max_machine_num + 1):
+    for i in range(1, env.machine_num + 1):
         record["reward"][f"agent_{i}"] = []
         record["utilization_rate"][f"agent_{i}"] = []
+
     for episode in range(num_episodes):
         G = {}
-        reward = 0
-        for i in range(1, env._max_machine_num + 1):
+        for i in range(1, env.machine_num + 1):
             G[f"agent_{i}"] = 0
-        obs_i = env.reset()
-        global_state, state_mask = env.get_global_state()
-        # done_n = [False] * mappo.n_agents
-        episode_rewards = np.zeros(env._machine_num)
+        _,_,_,_ = env.reset()
         done, truncated = False, False
         while not done and not truncated:
+            action = noname_2(env.available_jobs,env.current_machine,env.compute_UR())
+            reward,done,truncated = env.step_by_sr(action)
+            G[f"agent_{env.current_machine.id}"] += reward
 
-            active_agent_id = env._current_machine.id  # 获取当前需要决策的智能体
-
-            action = noname(env._job_list, env._current_machine, env.compute_UR())
-
-            next_obs, reward, done, truncated = env.step_by_sr(action)
-
-            next_global_state, next_state_mask = env.get_global_state()
-            G[f"agent_{active_agent_id}"] += reward
-        machine = env._machines.head
-        while machine:
+        list(
             record["reward"][f"agent_{machine.id}"].append(G[f"agent_{machine.id}"])
+            for machine in env.machines
+        )
+
+        list(
             record["utilization_rate"][f"agent_{machine.id}"].append(
                 machine.get_utilization_rate(env.time_step)
             )
-            machine = machine.next
+            for machine in env.machines
+        )
         record["makespan"][f"episode_{episode}"] = env.time_step
-        print(f"episode {episode+1}: makespan {env.time_step}")
-    with open("record_sr.json", "w") as f:
+
+
+        print(
+            f"Episode {episode + 1}/{num_episodes}: make_span {env.time_step}"
+        )
+
+    with open("record.json", "w") as f:
         json.dump(record, f)
 
-
 PARAMS = {
-    "num_episodes": 1,
+    "num_episodes": 2000,
     "batch_size": 32,
     "learning_rate": 6e-6,
     "gamma": 1,
@@ -146,7 +145,7 @@ PARAMS = {
     "action_dim": 6,
     "max_machine_num": 20,
     "max_job_num": 30,
-    "share_parameters": False,
+    "share_parameters": True,
     "num_heads": 6,
     "device": (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -183,7 +182,7 @@ train_async_mappo(
     batch_size=PARAMS["batch_size"],
     epochs=10,
 )
-# scheduling_algotithm(
+# sr(
 #     env=env,
 #     num_episodes=PARAMS["num_episodes"],
 # )

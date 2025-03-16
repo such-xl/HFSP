@@ -402,7 +402,7 @@ class MAPPO:
         device=torch.device("cpu"),
     ):
         self.n_agents = n_agents
-
+        self.share_parameters = share_parameters
         if share_parameters:
             # 所有智能体共享相同的网络参数
 
@@ -500,8 +500,8 @@ class MAPPO:
         total_actor_loss = 0
         total_critic_loss = 0
         total_entropy = 0
-
-        for agent in self.agents:
+        agents = [self.agents[0]] if self.share_parameters else self.agents
+        for agent in agents:
             actor_loss, critic_loss, entropy = agent.update(batch_size, epochs)
             total_actor_loss += actor_loss
             total_critic_loss += critic_loss

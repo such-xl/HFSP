@@ -46,7 +46,10 @@ class Job(Node):
     def get_t_process(self, machine_id):
         """
         获取当前工序在机器machine上的加工时间
+
         """
+        if self.is_completed():
+            raise ValueError("job is completed")
         return self._process_list[self._progress - 1][machine_id]
 
     def match_machine(self, machine_id) -> bool:

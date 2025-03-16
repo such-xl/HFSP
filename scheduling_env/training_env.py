@@ -171,7 +171,6 @@ class TrainingEnv:
                 LRPT(self.available_jobs, self.current_machine.id),
                 noname_2(self.available_jobs, self.current_machine, self.compute_UR()),
             ]
-
             obs_i = [job.get_state_code() for job in update_avi_jobs]
             self.available_jobs = update_avi_jobs
 
@@ -216,22 +215,21 @@ class TrainingEnv:
         global_state, state_mask = self.get_global_state()
         return obs_i, obs_mask, global_state, state_mask, reward, done, truncated
 
-    def step_by_sr(self, job):
-        self._current_machine.update_decision_time(self.time_step)
-        self._current_machine.load_job(job, self.time_step)
+    def step_by_sr(self,action):
+
+        self.current_machine.load_job(action, self.time_step)
+        self.current_machine.update_decision_time(self.time_step)
         done, truncated = False, False
         if (
             not self.is_any_machine_need_to_decision()
         ):  # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
             done, truncated = self.run()
-        reward = self.compute_single_reward(self._current_machine.id)
+        reward = self.compute_single_reward(self.current_machine.id)
         if not done and not truncated:
             decision_machines = self.get_decsion_machines()
-            self._current_machine = decision_machines[0]
-            state_i = self.get_state_i(self._current_machine)
-        else:
-            state_i = [[0 for _ in range(6)] for _ in range(5)]
-        return state_i, reward, done, truncated
+            self.current_machine = decision_machines[0]
+            self.available_jobs = self.get_available_jobs()
+        return reward, done, truncated
 
     def is_any_machine_need_to_decision(self):
         for machine in self.machines:
