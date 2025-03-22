@@ -210,69 +210,13 @@ class Plotter:
             plt.ioff()
         plt.close()
 
+class ExponentialTempScheduler:
+    def __init__(self, initial_temp=1.0, min_temp=0.01, decay_rate=0.998):
+        self.initial_temp = initial_temp
+        self.min_temp = min_temp
+        self.decay_rate = decay_rate
+        self.current_temp = initial_temp
 
-class StateNorm:
-    def __init__(
-        self,
-        machine_seq_len,
-        machine_dim,
-        job_seq_len,
-        job_dim,
-        action_dim,
-        scale_factor,
-    ) -> None:
-        self.machine_seq_len = machine_seq_len
-        self.machine_dim = machine_dim
-        self.job_seq_len = job_seq_len
-        self.job_dim = job_dim
-        self.action_dim = action_dim
-        self.scale_factor = scale_factor
-
-    def machine_padding(self, data: list):
-        # dim-padding
-        data = [
-            (
-                x + [0] * (self.machine_dim - len(x))
-                if len(x) < self.machine_dim
-                else x[: self.machine_dim]
-            )
-            for x in data
-        ]
-        # seq-padding
-        mask = np.ones((self.machine_seq_len,), dtype=bool)
-        mask[: len(data)] = False
-        padded_data = np.zeros((self.machine_seq_len, self.machine_dim))
-        if len(data) > 0:
-            padded_data[: len(data), :] = data
-        if np.all(mask):  # 如果全是填充，通过attention layer后会出现nan
-            mask[0] = False
-        return padded_data, mask
-
-    def job_padding(self, data: list):
-        # dim-padding
-        # data = [x + [0]*(self.job_dim-len(x)) if len(x)<self.job_dim else x[:self.job_dim] for x in data]
-        # seq-padding
-        mask = np.ones((self.job_seq_len,), dtype=bool)
-        mask[: len(data)] = False
-        padded_data = np.zeros((self.job_seq_len))
-        if len(data) > 0:
-            padded_data[: len(data)] = data
-        if np.all(mask):  # 如果全是填充，通过attention layer后会出现nan
-            mask[0] = False
-        return padded_data, mask
-
-    def machine_action_padding(self, machine_action, action_mask):
-
-        for am in action_mask:
-            am.extend([False for _ in range(self.action_dim - len(am) - 1)])
-            am.append(True)
-        # padding data
-        for _ in range(self.machine_seq_len - len(action_mask)):
-            action_mask.append([False for _ in range(self.action_dim)])
-            machine_action.append([0, 0])
-        # for _ in range(self.machine_seq_len-len(action_mask)):
-        #     action_mask.append([False for i in range(self.action_dim)])
-        #     machine_action.append([0 for i in range(self.machine_dim+self.action_dim)])
-        machine_action = np.array(machine_action)
-        action_mask = np.array(action_mask)
-        return np.array(machine_action), np.array(action_mask)
+    def step(self):
+        self.current_temp = self.current_temp * self.decay_rate
+        return max(self.min_temp, self.current_temp)

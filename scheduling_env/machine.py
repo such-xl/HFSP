@@ -122,7 +122,11 @@ class Machine(Node):
     def get_utilization_rate(self, time_step):
         """获取利用率"""
 
-        return self.busy_time / time_step if time_step > 0 else 0
+        if self.is_idle():
+            return self.busy_time / time_step if time_step > 0 else 0
+        if self.is_running():
+            t = self.job.current_progress_remaining_time()
+            return (self.busy_time + t) / (time_step + t) if time_step > 0 else 0
 
     def get_idle_time(self, time_step):
         """获取空闲时间"""

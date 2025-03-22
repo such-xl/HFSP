@@ -38,7 +38,7 @@ class Job(Node):
             (
                 0
                 if self._status == JobStatus.COMPLETED
-                else self.current_progress_remaining_time()
+                else self.current_progress_remaining_time()/10
             ),
             self._process_num - self._progress,
         ]

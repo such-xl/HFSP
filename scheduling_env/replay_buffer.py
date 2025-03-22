@@ -80,3 +80,192 @@ class BufferEntity(NamedTuple):
     next_states: torch.Tensor
     rewards: torch.Tensor
     dones: torch.Tensor
+
+
+class PPOBuffer:
+    """
+    简化版PPO缓冲区，直接使用PyTorch Tensor存储数据以提高读取速度
+    仅实现基本的存储和获取功能
+    """
+
+    def __init__(
+        self,
+        obs_dim,
+        obs_len,
+        state_dim,
+        state_len,
+        buffer_size,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    ):
+        """
+        初始化PPO缓冲区
+
+        参数:
+            obs,
+            obs_mask,
+            action,
+            reward,
+            next_obs,
+            next_obs_mask,
+            done,
+            global_state,
+            state_mask,
+            next_global_state,
+            next_state_mask,
+            log_prob,
+        """
+        self.device = device
+        self.obs = torch.zeros(
+            (buffer_size, obs_len, obs_dim), dtype=torch.float32, device=device
+        )
+        self.obs_masks = torch.zeros(
+            (buffer_size, obs_len), dtype=torch.bool, device=device
+        )
+        self.actions = torch.zeros((buffer_size), dtype=torch.int64, device=device)
+        self.rewards = torch.zeros((buffer_size), dtype=torch.float32, device=device)
+        self.next_obs = torch.zeros(
+            (buffer_size, obs_len, obs_dim), dtype=torch.float32, device=device
+        )
+        self.next_obs_masks = torch.zeros(
+            (buffer_size, obs_len), dtype=torch.float32, device=device
+        )
+        self.dones = torch.zeros((buffer_size), dtype=torch.bool, device=device)
+        self.global_states = torch.zeros(
+            (buffer_size, state_len, state_dim), dtype=torch.float32, device=device
+        )
+        self.state_masks = torch.zeros(
+            (buffer_size, state_len), dtype=torch.bool, device=device
+        )
+        self.next_global_states = torch.zeros(
+            (buffer_size, state_len, state_dim), dtype=torch.float32, device=device
+        )
+        self.next_state_masks = torch.zeros(
+            (buffer_size, state_len), dtype=torch.bool, device=device
+        )
+        self.log_probs = torch.zeros((buffer_size), dtype=torch.float32, device=device)
+        self.ptr = 0
+        self.buffer_size = buffer_size
+        self.full = False
+
+    def push(
+        self,
+        obs,
+        obs_mask,
+        action,
+        reward,
+        next_obs,
+        next_obs_mask,
+        done,
+        global_state,
+        state_mask,
+        next_global_state,
+        next_state_mask,
+        log_prob,
+    ):
+        """
+        存储一个时间步的交互数据
+        支持直接存入tensor或numpy数组
+        """
+
+        with torch.no_grad():
+            # 将数据存入缓冲区
+            self.obs[self.ptr] = torch.tensor(
+                obs, dtype=torch.float32, device=self.device
+            )
+            self.obs_masks[self.ptr] = torch.tensor(
+                obs_mask, dtype=torch.bool, device=self.device
+            )
+            self.actions[self.ptr] = torch.tensor(
+                action, dtype=torch.int64, device=self.device
+            )
+            self.rewards[self.ptr] = torch.tensor(
+                reward, dtype=torch.float32, device=self.device
+            )
+            self.next_obs[self.ptr] = torch.tensor(
+                next_obs, dtype=torch.float32, device=self.device
+            )
+            self.next_obs_masks[self.ptr] = torch.tensor(
+                next_obs_mask, dtype=torch.bool, device=self.device
+            )
+            self.dones[self.ptr] = torch.tensor(
+                done, dtype=torch.bool, device=self.device
+            )
+            self.global_states[self.ptr] = torch.tensor(
+                global_state, dtype=torch.float32, device=self.device
+            )
+            self.state_masks[self.ptr] = torch.tensor(
+                state_mask, dtype=torch.bool, device=self.device
+            )
+            self.next_global_states[self.ptr] = torch.tensor(
+                next_global_state, dtype=torch.float32, device=self.device
+            )
+            self.next_state_masks[self.ptr] = torch.tensor(
+                next_state_mask, dtype=torch.bool, device=self.device
+            )
+            self.log_probs[self.ptr] = torch.tensor(
+                log_prob, dtype=torch.float32, device=self.device
+            )
+            if  self.ptr > 0:
+                prev_idx = (self.ptr - 1) % self.buffer_size
+                self.next_obs[prev_idx] = torch.tensor(
+                    obs, dtype=torch.float32, device=self.device
+                )
+                self.next_obs_masks[prev_idx] = torch.tensor(
+                    obs_mask, dtype=torch.bool, device=self.device
+                )
+                self.next_global_states[prev_idx] = torch.tensor(
+                    global_state, dtype=torch.float32, device=self.device
+                )
+                self.next_state_masks[prev_idx] = torch.tensor(
+                    next_state_mask, dtype=torch.bool, device=self.device
+                )
+                self.dones[prev_idx] = torch.tensor(
+                    False, dtype=torch.bool, device=self.device
+                )
+        # 更新指针
+        self.ptr = (self.ptr + 1) % self.buffer_size
+        if self.ptr == 0:
+            self.full = True
+
+    def get(self):
+        """
+        获取缓冲区中的所有数据
+        返回: 包含所有数据的字典，所有数据都是tensor格式
+        """
+        if self.full:
+            valid_indices = slice(0, self.buffer_size)
+        else:
+            valid_indices = slice(0, self.ptr)
+
+        data_dict = {
+            "obs": self.obs[valid_indices],
+            "obs_masks": self.obs_masks[valid_indices],
+            "actions": self.actions[valid_indices],
+            "rewards": self.rewards[valid_indices],
+            "next_obs": self.next_obs[valid_indices],
+            "next_obs_mask": self.next_obs_masks[valid_indices],
+            "dones": self.dones[valid_indices],
+            "global_states": self.global_states[valid_indices],
+            "state_masks": self.state_masks[valid_indices],
+            "next_global_states": self.next_global_states[valid_indices],
+            "next_state_masks": self.next_state_masks[valid_indices],
+            "log_probs": self.log_probs[valid_indices],
+        }
+
+        return data_dict
+
+    def clear(self):
+        """
+        清空缓冲区
+        """
+        self.ptr = 0
+        self.full = False
+
+    def __len__(self):
+        """
+        返回缓冲区中实际存储的经验数量
+        """
+        if self.full:
+            return self.buffer_size
+        else:
+            return self.ptr
