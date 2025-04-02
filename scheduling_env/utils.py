@@ -210,6 +210,7 @@ class Plotter:
             plt.ioff()
         plt.close()
 
+
 class ExponentialTempScheduler:
     def __init__(self, initial_temp=1.0, min_temp=0.01, decay_rate=0.998):
         self.initial_temp = initial_temp

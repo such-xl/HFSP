@@ -133,10 +133,10 @@ class Machine(Node):
         if self._status == MachineStatus.FAULT:
             raise ValueError("machine is fault")
         idle_time = 0
+        if self._status == MachineStatus.IDLE:
+            idle_time = time_step - self.busy_time
         if self._status == MachineStatus.RUNNING:
-            idle_time = self._end_idle_time - self._begin_idle_time
-        elif self._status == MachineStatus.IDLE:
-            idle_time = time_step - self._begin_idle_time
+            idle_time = time_step - self.busy_time
         if idle_time < 0:
             raise ValueError("idle time is negative")
         return idle_time

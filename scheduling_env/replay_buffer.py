@@ -205,7 +205,7 @@ class PPOBuffer:
             self.log_probs[self.ptr] = torch.tensor(
                 log_prob, dtype=torch.float32, device=self.device
             )
-            if  self.ptr > 0:
+            if self.ptr > 0:
                 prev_idx = (self.ptr - 1) % self.buffer_size
                 self.next_obs[prev_idx] = torch.tensor(
                     obs, dtype=torch.float32, device=self.device
@@ -253,7 +253,10 @@ class PPOBuffer:
         }
 
         return data_dict
-
+    def update_last_reward(self, reward):
+        self.rewards[(self.ptr - 1) % self.buffer_size] = torch.tensor(
+            reward, dtype=torch.float32, device=self.device
+        )
     def clear(self):
         """
         清空缓冲区

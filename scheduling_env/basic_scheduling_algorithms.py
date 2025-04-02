@@ -44,7 +44,7 @@ def LRPT(jobs, machine_id: int) -> int:
     return aim_job
 
 
-def FIFO(jobs, machine_id: int) -> int:
+def FIFO(jobs) -> int:
     insert_time = INF
     aim_job = None
     for job in jobs:
@@ -54,6 +54,52 @@ def FIFO(jobs, machine_id: int) -> int:
             else (aim_job, insert_time)
         )
     return aim_job
+def EDD(jobs):
+    """
+        (Earliest Due Date) 优先处理截止日期最早的作业
+    """
+    min_EDD = INF
+    aim_job = None
+    for job in jobs:
+        EDD = job.due_time
+        aim_job, min_EDD = (job, EDD) if EDD < min_EDD else (aim_job, min_EDD)
+    return aim_job
+def MS(jobs,time_step):
+    """
+    选择剩余时间最少的作业
+    剩余时间 = 截止日期 - 当前时间 - 剩余处理时间
+    """
+    
+    min_ms = INF
+    aim_job = None
+    for job in jobs:
+        ms = (job.due_time-time_step)-job.get_remaining_avg_time()
+        aim_job, min_ms = (job, ms) if ms < min_ms else (aim_job, min_ms)
+    return aim_job
+
+def SRO(jobs,time_step):
+    """
+        每剩余工序最小松弛时间规则 (Slack per Remaining Operation, S/RO)
+        Slack_j = (作业j的交付日期 d_j - 当前时间 t) - 作业j的剩余总处理时间 p_rem_j
+    """
+    min_sro = INF
+    aim_job = None
+    for job in jobs:
+        sro = (job.due_time-time_step-job.get_remaining_avg_time()) / (job.process_num-job.progress+1)
+        aim_job,min_sro =(job,sro) if sro < min_sro else (aim_job, min_sro)
+    return aim_job
+def CR(jobs,time_step):
+    """
+        优先处理关键比率最小的作业
+    """
+    min_cr = INF
+    aim_job = None
+    for job in jobs:
+        cr = (job.due_time-time_step)/job.get_remaining_avg_time()
+        aim_job, min_cr = (job, cr) if cr < min_cr else (aim_job, min_cr)
+    return aim_job
+EDD,MS,SRO,CR
+
 
 
 def noname(jobs, machine, machines_UR: list[float]):

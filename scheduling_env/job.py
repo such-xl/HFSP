@@ -10,7 +10,7 @@ class JobStatus(Enum):
 
 class Job(Node):
     def __init__(
-        self, id: int, type: int, process_num: int, process_list: list, insert_time: int
+        self, id: int, type: int, process_num: int, process_list: list, insert_time: int, due_time: int
     ) -> None:
         super().__init__(None)
         self._id = id  # job序号,从1开始
@@ -19,12 +19,17 @@ class Job(Node):
         self._process_list = (
             process_list  # job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         )
+        self._due_time = due_time  # job截止时间
         self._progress = 1  # 加工进度 代表第progess道工序待加工，0 代表加工完成
         self._status = JobStatus.IDLE
         self._machine = None  # 正在加工该job的机器id，0表示目前没有被加工
         self._t_process = 0  # 当前工序需被加工的时间
         self._t_processed = 0  # 当前工序已经被加工时间
-        self._inert_time = insert_time  # 作业插入时间
+        self._insert_time = insert_time  # 作业插入时间
+        self._process_time = 0  # 作业总加工时间
+        self._completed_time = 0  # 作业完成时间
+        self._wait_time = 0  # 作业等待时间
+        self._tard_time = 0
 
     def get_state_code(self):
         """
@@ -38,7 +43,7 @@ class Job(Node):
             (
                 0
                 if self._status == JobStatus.COMPLETED
-                else self.current_progress_remaining_time()/10
+                else self.current_progress_remaining_time()
             ),
             self._process_num - self._progress,
         ]
@@ -103,10 +108,15 @@ class Job(Node):
         """判断是否正在加工"""
         return self._status == JobStatus.RUNNING
 
+    def compute_wait_time(self, time_step):
+
+        self._wait_time = (time_step - self._insert_time) - self._process_time
+        self._tard_time = max(0, time_step - self._due_time)
+
     def run(self, min_run_timestep, time_step):
         """执行min_run_timestep 时序"""
         self._t_processed += min_run_timestep
-
+        self._process_time += min_run_timestep
         if min_run_timestep <= 0:
             raise ValueError("min_run_timestep must be greater than 0")
 
@@ -168,7 +178,7 @@ class Job(Node):
 
     @property
     def process_num(self):
-        return self.process_num
+        return self._process_num
 
     @property
     def process_list(self):
@@ -198,6 +208,26 @@ class Job(Node):
     def insert_time(self):
         return self._insert_time
 
+    @property
+    def process_time(self):
+        return self._process_time
+
+    @property
+    def completed_time(self):
+        return self._completed_time
+
+    @property
+    def wait_time(self):
+        return self._wait_time
+    @property
+    def due_time(self):
+        return self._due_time
+    @property
+    def tard_time(self):
+        return self._tard_time
+    @due_time.setter
+    def due_time(self, due_time):
+        self._due_time = due_time
 
 class JobList(DoublyLinkList):
     def __init__(self) -> None:

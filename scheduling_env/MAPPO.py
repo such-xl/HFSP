@@ -8,6 +8,7 @@ import random
 from .replay_buffer import PPOBuffer
 from .network import ActorNetwork, CriticNetwork
 
+
 # 设置随机种子以确保可重复性
 def set_seed(seed):
     np.random.seed(seed)
@@ -18,6 +19,7 @@ def set_seed(seed):
 
 
 set_seed(42)
+
 
 class MAPPOAgent:
     def __init__(
@@ -37,6 +39,7 @@ class MAPPOAgent:
         gae_lambda=0.95,
         num_heads=5,
         device=torch.device("cpu"),
+        model_save_path="models/main.pth",
     ):
         self.agent_id = agent_id
         self.obs_dim = obs_dim
@@ -50,25 +53,26 @@ class MAPPOAgent:
         self.entropy_coef = entropy_coef
         self.gae_lambda = gae_lambda
         self.device = device
+        self.model_save_path = model_save_path
         # 创建策略网络和价值网络
         self.actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
         # 价值网络使用全局状态作为输入
         self.critic = CriticNetwork(global_state_dim, num_heads).to(device)
         # 创建优化器
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr = actor_lr)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr =critic_lr)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=critic_lr)
 
         # 旧策略，用于计算重要性采样比率
         self.old_actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
         self.old_actor.load_state_dict(self.actor.state_dict())
 
-    def select_action(self, obs, obs_mask, tau, hard):
+    def select_action(self, obs, obs_mask, tau, hard,eval_mode=False):
         obs_tensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
         obs_mask = torch.BoolTensor(obs_mask).to(self.device).unsqueeze(0)
 
         with torch.no_grad():
             action, log_prob, entropy = self.actor.get_action(
-                obs_tensor, obs_mask, tau, hard
+                obs_tensor, obs_mask, tau, hard,eval_mode=eval_mode
             )
 
         return action, log_prob.cpu().numpy(), entropy.cpu().numpy()
@@ -113,7 +117,8 @@ class MAPPOAgent:
 
     def update_old_policy(self):
         self.old_actor.load_state_dict(self.actor.state_dict())
-
+    def update_last_reward(self,reward,buffer):
+        buffer.update_last_reward(reward)
     def compute_advantages(self, rewards, values, next_values, dones):
         advantages = np.zeros_like(rewards, dtype=np.float32)
         returns = np.zeros_like(rewards, dtype=np.float32)
@@ -131,7 +136,7 @@ class MAPPOAgent:
 
         return advantages, returns
 
-    def update(self,buffer,batch_size=64, epochs=100):
+    def update(self, buffer, batch_size=9, epochs=100):
         if len(buffer) < batch_size:
             return 0, 0, 0  # 如果没有足够的样本，则不更新
 
@@ -205,7 +210,7 @@ class MAPPOAgent:
 
                 # 计算当前策略的动作概率
                 logits = self.actor(batch_obs, batch_obs_mask)  # 获取logits
-                logits = logits.masked_fill(batch_obs_mask, float('-inf'))
+                logits = logits.masked_fill(batch_obs_mask[:,:-1], float("-inf"))
                 probs = F.softmax(logits, dim=-1)  # 显式应用softmax
                 dist = Categorical(probs)
                 curr_log_prob = dist.log_prob(batch_action)
@@ -260,6 +265,13 @@ class MAPPOAgent:
             critic_loss_epoch / n_updates,
             entropy_epoch / n_updates,
         )
+    def save(self):
+        print(self.model_save_path)
+        torch.save(self.actor.state_dict(),self.model_save_path)
+    def load(self):
+        state_dict = torch.load(self.model_save_path)
+        self.actor.load_state_dict(state_dict)
+        self.actor.eval()
 class AsyncMAPPO:
     def __init__(
         self,
@@ -278,8 +290,9 @@ class AsyncMAPPO:
         buffer_capacity=10000,
         gae_lambda=0.95,
         num_heads=5,
-        buffer_size = 10000,
+        buffer_size=10000,
         device=torch.device("cpu"),
+        model_save_path="models/main.pth",
     ):
         # agents with share networt but replay buffer
         self.agents = MAPPOAgent(
@@ -298,22 +311,35 @@ class AsyncMAPPO:
             gae_lambda=gae_lambda,
             num_heads=num_heads,
             device=device,
+            model_save_path=model_save_path,
         )
-        self.buffers = [PPOBuffer(obs_dim=obs_dim,obs_len=obs_len,state_dim=global_state_dim,state_len=global_state_len, buffer_size=buffer_size,device=device) for _ in range(n_agents)]
+        self.buffers = [
+            PPOBuffer(
+                obs_dim=obs_dim,
+                obs_len=obs_len,
+                state_dim=global_state_dim,
+                state_len=global_state_len,
+                buffer_size=buffer_size,
+                device=device,
+            )
+            for _ in range(n_agents)
+        ]
         self.n_agents = n_agents
         self.device = device
-    def select_action(self, obs, obs_mask, tau, hard):
+
+    def select_action(self, obs, obs_mask, tau=0.1, hard=False,eval_mode=False):
         """为当前活动智能体选择动作"""
-        return self.agents.select_action(
-            obs, obs_mask, tau, hard
-        )
-    def update(self,batch_size=64, epochs=100):
+        return self.agents.select_action(obs, obs_mask, tau, hard,eval_mode)
+
+    def update(self, batch_size=64, epochs=100):
         total_actor_loss = 0
         total_critic_loss = 0
         total_entropy = 0
 
         for buffer in self.buffers:
-            actor_loss, critic_loss, entropy = self.agents.update(buffer,batch_size, epochs)
+            actor_loss, critic_loss, entropy = self.agents.update(
+                buffer, batch_size, epochs
+            )
             total_actor_loss += actor_loss
             total_critic_loss += critic_loss
             total_entropy += entropy
@@ -323,6 +349,7 @@ class AsyncMAPPO:
             total_critic_loss / self.n_agents,
             total_entropy / self.n_agents,
         )
+
     def store_experience(
         self,
         obs,
@@ -353,9 +380,19 @@ class AsyncMAPPO:
             next_global_state,
             next_state_mask,
             log_prob,
-            self.buffers[agent_id]
+            self.buffers[agent_id],
         )
+    def update_last_reward(self,rewards):
+        """更新最后一步的奖励"""
+        for i in range(len(rewards)):
+            self.agents.update_last_reward(rewards[i],self.buffers[i])
 
     def evaluate_state(self, global_state, global_state_mask):
         """评估当前状态的价值（从指定智能体的角度）"""
         return self.agents.evaluate_state(global_state, global_state_mask)
+    def save_model(self):
+        """保存模型"""
+        self.agents.save()
+    def load_model(self):
+        """加载模型"""
+        self.agents.load()

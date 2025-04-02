@@ -1,15 +1,16 @@
 import random
 import numpy as np
 from .job import Job, JobList, fetch_job_info
-from .machine import Machine, MachineList
-from .basic_scheduling_algorithms import SPT, LPT, SRPT, LRPT, noname_2
-
+import json
+from .machine import Machine
+from .basic_scheduling_algorithms import EDD,MS,SRO,CR
+from .reward import AsyncMachineUtilizationReward
 np.random.seed(42)
 
 
 class TrainingEnv:
     # 初始化环境
-    def __init__(
+    def __init1__(
         self,
         obs_dim,
         obs_len,
@@ -25,8 +26,34 @@ class TrainingEnv:
         self.state_len = state_len
         self.action_dim = action_dim
         self.max_job_num = max_job_num
-        self.machine_num, self.job_type = fetch_job_info(path=job_file_path)
+        self.machine_num, self.job_type = fetch_job_info(
+            path="scheduling_env/data/train_data/Mk06.fjs"
+        )
+        self.machine_num = 10
+        with open(job_file_path, "r") as f:
+            self.job_type = json.load(f)
+            # 转换键
+        for job in self.job_type:
+            for process in job["process_list"]:
+                # 创建新的字典来存储转换后的键
+                new_process = {}
+                for key, value in process.items():
+                    new_process[int(key)] = value  # 将字符串键转换为整数
+                # 用转换后的字典替换原字典
+                job["process_list"][job["process_list"].index(process)] = new_process
         self.job_arrivals = self.create_job_arriavl_seq()
+    def __init__(
+        self,obs_dim,obs_len,state_dim,state_len,action_dim,max_job_num,job_file_path) -> None:
+
+        self.obs_dim = obs_dim
+        self.obs_len = obs_len
+        self.state_dim = state_dim
+        self.state_len = state_len
+        self.machine_num = 10
+        self.action_dim = action_dim
+        self.max_job_num = max_job_num
+        self.file_path = job_file_path
+
 
     def create_job_arriavl_seq(self, lambda_rate=0.1):
         """
@@ -38,13 +65,12 @@ class TrainingEnv:
         intervals = np.round(intervals).astype(int)  # 取整转换为整数
         arrival_times = np.cumsum(intervals)
         arrival_times = np.insert(arrival_times, 0, [0] * 10)
-        selected_jobs = self.job_type.copy()
-        selected_jobs.extend([random.choice(self.job_type) for _ in range(self.max_job_num-10)])
+        selected_jobs = [random.choice(self.job_type) for _ in range(self.max_job_num)]
         arrivals = [(job, time) for job, time in zip(selected_jobs, arrival_times)]
         arrivals.sort(key=lambda x: x[1])
         return arrivals
 
-    def insert_job(self):
+    def insert_job1(self):
         while (
             self.job_num < self.max_job_num
             and self.time_step == self.job_arrivals[self.job_num][1]
@@ -57,8 +83,17 @@ class TrainingEnv:
                     process_num=job_info["process_num"],
                     process_list=job_info["process_list"],
                     insert_time=self.time_step,
+                    due_time=0,
                 )
             )
+            self.uncomplete_job.tail.due_time = self.uncomplete_job.tail.get_remaining_avg_time()*np.random.uniform(1,2)+self.time_step
+            self.job_num += 1
+    def insert_job(self):
+        while (
+            self.job_num < self.max_job_num
+            and self.time_step == self.job_list[self.job_num].insert_time
+        ):
+            self.uncomplete_job.append(self.job_list[self.job_num])
             self.job_num += 1
 
     def is_decision_machine(self, machine):
@@ -99,7 +134,7 @@ class TrainingEnv:
             job = job.next
         return available_jobs
 
-    def reset(self):
+    def reset1(self):
         """
         重置环境
         reutrn:
@@ -121,7 +156,37 @@ class TrainingEnv:
         global_state, state_mask = self.get_global_state()
 
         return obs_i, obs_mask, global_state, state_mask
+    def reset(self):
+        """
+        重置环境
+        reutrn:
+            state: 当前job环境状态
+            machine_action: 决策机器的状态
+        """
+        self.time_step, self.job_num = 0, 0
+        self.idle_action = 0
+        self.machines = [Machine(i) for i in range(1, self.machine_num + 1)]
+        self.uncomplete_job = JobList()
+        self.complete_job = JobList()
+        self.reward_calculator = AsyncMachineUtilizationReward(self.machine_num)
+        jobs = None
+        self.job_list = []
+        with open(self.file_path, "r") as f:
+            jobs = json.load(f)
+        for i,job in enumerate(jobs,1):
+            process = []
+            for machine_id,process_time in zip(job["machine"],job["process"]):
+                process.append({machine_id+1:process_time})
+            self.job_list.append(Job(i,i,len(job["process"]),process,int(job["insert_time"]),int(job["due_time"])))
+        self.job_list.sort(key=lambda x: x.insert_time)
+        self.insert_job()
+        decision_machines = self.get_decsion_machines()
+        self.current_machine = decision_machines[0]
+        self.available_jobs = self.get_available_jobs()
+        obs_i, obs_mask = self.get_obs_i()
+        global_state, state_mask = self.get_global_state()
 
+        return obs_i, obs_mask,global_state,state_mask
     def get_global_state(self):
         """
         获取全局状态
@@ -132,7 +197,7 @@ class TrainingEnv:
             global_state.append(job.get_state_code())
             state_mask.append(False)
             job = job.next
-        for i in range(30 - self.uncomplete_job.length): # todo list
+        for i in range(self.state_len - self.uncomplete_job.length):  # todo list
             global_state.append([0 for _ in range(self.obs_dim)])
             state_mask.append(True)
         if state_mask[0] == True:
@@ -163,10 +228,11 @@ class TrainingEnv:
             if job.is_completed():
                 self.uncomplete_job.disengage_node(job)
                 self.complete_job.append(job)
+                job.compute_wait_time(self.time_step)
             job = next_job
         # print(f'{self.complete_job.length}:{self.uncomplete_job.length}')
         done = True if self.complete_job.length >= self.max_job_num else False
-        truncated = True if self.time_step > 2500 else False
+        truncated = True if self.time_step > 5000 else False
         while (
             not done and not truncated and not self.is_any_machine_need_to_decision()
         ):  # 没有结束且没有空闲机器，继续
@@ -179,19 +245,16 @@ class TrainingEnv:
         如果可用作业大于5，则用调度规则选取的作业信息作为state
         否则
         """
-        if len(self.available_jobs) <= self.obs_len - 1:
-            obs_i = [job.get_state_code() for job in self.available_jobs]
 
-        else:
-            update_avi_jobs = [
-                SPT(self.available_jobs, self.current_machine.id),
-                LPT(self.available_jobs, self.current_machine.id),
-                SRPT(self.available_jobs, self.current_machine.id),
-                LRPT(self.available_jobs, self.current_machine.id),
-                noname_2(self.available_jobs, self.current_machine, self.compute_UR()),
-            ]
-            obs_i = [job.get_state_code() for job in update_avi_jobs]
-            self.available_jobs = update_avi_jobs
+        update_avi_jobs = [
+            EDD(self.available_jobs),
+            SRO(self.available_jobs, self.time_step),
+            # noname_2(self.available_jobs, self.current_machine, self.compute_UR()),
+            CR(self.available_jobs,self.time_step),
+            MS(self.available_jobs,self.time_step),
+        ]
+        obs_i = [job.get_state_code() for job in update_avi_jobs]
+        self.available_jobs = update_avi_jobs
 
         obs_mask = [False if i < len(obs_i) else True for i in range(self.obs_len)]
         obs_mask[-1] = False
@@ -203,34 +266,14 @@ class TrainingEnv:
                 self.current_machine.get_utilization_rate(self.time_step),
                 np.mean(self.compute_UR()),
                 np.std(self.compute_UR()),
-                self.time_step / 100,
+                np.log(self.time_step) if self.time_step > 1 else 0,
                 0,
             ]
         )
         return obs_i, obs_mask
 
     def step(self, action):
-        # makespans_copy = [x for x in self.makespans]
-
-        # expected_job = noname_2(self.available_jobs,self.current_machine,self.compute_UR())
-        # expected_reward = self.compute_single_reward(expected_job,[x for x in self.makespans])
-
-        # real_job = self.available_jobs[action] if action<len(self.available_jobs) else None
-        # real_reward = self.compute_single_reward(real_job,[x for x in self.makespans])
-        # reward = (real_reward - expected_reward) * 30
-        reward_idle = 0
-        if action == self.action_dim - 1:  # 空闲动作
-            # raise("hello")
-            # reward = reward * 0.1 if reward >0 else reward*10
-            self.idle_action += 1
-            reward_idle = -0.005
-        else:
-            self.current_machine.load_job(self.available_jobs[action], self.time_step)
-            self.makespan_max = np.max(self.makespans)
-            self.makespans[self.current_machine.id - 1] = (
-                self.time_step
-                + self.available_jobs[action].current_progress_remaining_time()
-            )
+        self.current_machine.load_job(self.available_jobs[action], self.time_step)
         self.current_machine.update_decision_time(self.time_step)
         done, truncated = False, False
         if (
@@ -246,20 +289,33 @@ class TrainingEnv:
         else:
             obs_i = [[0 for _ in range(self.obs_dim)] for _ in range(self.obs_len)]
             obs_mask = [True for _ in range(self.obs_len)]
+            obs_mask[0] = False
         global_state, state_mask = self.get_global_state()
-        # reward = self.compute_single_reward(self.current_machine.id,makespans_copy)
-        if truncated:
-            reward = -100
-
-        reward = self.compute_single_reward(
-            self.current_machine.id,
-            self.available_jobs[action] if action < len(self.available_jobs) else None,
-        )
+        if done:
+            reward = 0
+            self.rewards =[
+                self.compute_single_reward(
+                    i + 1
+                ) * 10
+                for i in range(self.machine_num)
+            ]
+        else:
+            reward = 0
+        utilization = self.compute_UR() # [self.current_machine.id-1]
+        [self.reward_calculator.update_machine_utilization(self.current_machine.id-1, u,timestamp=self.time_step) for u in utilization]
+        if done:
+            reward = 0
+            self.rewards = [self.reward_calculator.calculate_machine_reward(i,self.time_step) for i,u in enumerate(utilization)]
+            self.rewards = [x[0] for x in self.rewards]
+        # reward,_ = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
         return obs_i, obs_mask, global_state, state_mask, reward, done, truncated
 
     def step_by_sr(self, action):
+        if action is None:
+            pass
+        else:
 
-        self.current_machine.load_job(action, self.time_step)
+            self.current_machine.load_job(action, self.time_step)
         self.current_machine.update_decision_time(self.time_step)
         done, truncated = False, False
         if (
@@ -303,28 +359,73 @@ class TrainingEnv:
         reward_2 = np.abs(u_mean - u_i)
         return lamda_1 * reward_1 - lamda_2 * reward_2
 
-    def compute_single_reward(self, machine_id,job=None):
+    def compute_single_reward(self, machine_id):
         """
         计算单个agent的reward
         """
-        utiliaction_rates = [
-            agent.get_utilization_rate(self.time_step) for agent in self.machines
-        ]
-        machine = self.machines[machine_id - 1]
-        index = machine.id - 1
-        u_i = utiliaction_rates[machine.id - 1]
-        utiliaction_rates[index] = u_i
+        # utiliaction_rates = [
+        #     agent.get_utilization_rate(self.time_step) for agent in self.machines
+        # ]
+        # machine = self.machines[machine_id - 1]
+        # index = machine.id - 1
+        # u_i = utiliaction_rates[machine.id - 1]
+        # utiliaction_rates[index] = u_i
 
-        u_mean = np.mean(utiliaction_rates) + 1e-6
-        t_process = 0 if machine.job is None else machine.job.get_t_process(machine.id)
+        # u_mean = np.mean(utiliaction_rates) + 1e-6
+        # t_process = 0 if machine.job is None else machine.job.get_t_process(machine.id)
 
-        reward = -np.abs(u_i - u_mean) / u_mean
-        if job is None and u_i < u_mean:
-            reward -= 0.01
-        return reward
+        # # reward = -np.abs(u_i - u_mean) / u_mean
+        # reward = -(np.max(utiliaction_rates) - np.min(utiliaction_rates))
+        return self.reward_function(machine_id)
 
     def compute_UR(self):
         utiliaction_rates = [
             agent.get_utilization_rate(self.time_step) for agent in self.machines
         ]
         return utiliaction_rates
+
+    def compute_idle_time(self):
+        idle_times = [agent.get_idle_time(self.time_step) for agent in self.machines]
+        return idle_times
+
+    def reward_function(
+        self,agent_id
+    ):
+        # 负载均衡惩罚项
+        balance_penalty = self.calc_load_balance_penalty()
+
+        # 利用率熵
+        utilization_entropy = self.calc_utilization_entropy()
+
+        # 资源利用动态调整
+        # resource_efficiency = self.calc_resource_efficiency()
+        ur = self.compute_UR()
+        ur_i = ur[agent_id-1]
+        ur_mean = np.mean(ur)
+        ur_reward =  ur_i - ur_mean if ur_i<ur_mean else 0
+        ur_reward = ur_reward / ur_mean if ur_mean > 0 else 0
+        # 组合奖励
+        reward = -balance_penalty + utilization_entropy + ur_reward
+        return reward
+
+    def calc_load_balance_penalty(self):
+        utilization_rates = self.compute_UR()
+
+        # 最大最小利用率差异
+        load_imbalance = np.max(utilization_rates) - np.min(utilization_rates)
+
+          # 利用率方差
+        utilization_variance = np.var(utilization_rates)
+        return (load_imbalance + utilization_variance)/ np.mean(utilization_rates) if np.mean(utilization_rates) > 0 else 0
+
+    def calc_utilization_entropy(self):
+        utilization_rates = self.compute_UR()
+        total_utilization = np.sum(utilization_rates)
+
+        # 避免除零
+        probabilities = utilization_rates / (total_utilization + 1e-8)
+
+        # 计算熵
+        entropy = -np.sum(probabilities * np.log(probabilities + 1e-8))
+        normalized_entropy = entropy / np.log(len(utilization_rates))
+        return normalized_entropy
