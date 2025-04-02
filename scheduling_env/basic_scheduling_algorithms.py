@@ -7,12 +7,13 @@ INF = 1e9
 
 def SPT(jobs: list[Job], machine_id: int) -> int:
     """当前工序最短处理时间优先"""
-    min_t = INF
+    min_t = INFee
     action = -1
     for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
+        if job.is_wating_for_machine() and job.match_machine(machine_id):
+            c_t = job.get_t_process(machine_id)
+        else:
             continue
-        c_t = job.get_t_process(machine_id)
         action,min_t = (i,c_t) if c_t < min_t else (action,min_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')
@@ -24,9 +25,10 @@ def LPT(jobs: list[Job], machine_id: int) -> int:
     max_t = -INF
     action = -1
     for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
+        if job.is_wating_for_machine() and job.match_machine(machine_id):
+            c_t = job.get_t_process(machine_id)
+        else:
             continue
-        c_t = job.get_t_process(machine_id)
         action,max_t = (i,c_t) if c_t > max_t else (action,max_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')
@@ -38,9 +40,10 @@ def SRPT(jobs: list[Job], machine_id: int) -> int:
     min_t = INF
     action = -1
     for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
+        if job.is_wating_for_machine() and job.match_machine(machine_id):
+            c_t = job.get_remaining_avg_time()
+        else:
             continue
-        c_t = job.get_remaining_avg_time()
         action,min_t = (i,c_t) if c_t < min_t else (action,min_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')
@@ -52,9 +55,10 @@ def LRPT(jobs: list[Job], machine_id: int) -> int:
     max_t = -INF
     action = -1
     for i, job in enumerate(jobs):
-        if not job.is_wating_for_machine() or not job.match_machine(machine_id):
+        if job.is_wating_for_machine() and job.match_machine(machine_id):
+            c_t = job.get_remaining_avg_time()    
+        else:
             continue
-        c_t = job.get_remaining_avg_time()
         action,max_t = (i,c_t) if c_t > max_t else (action,max_t)
     # if action < 0:
     #     raise ValueError('Action is not valid(Action < 0)')

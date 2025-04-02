@@ -1,12 +1,12 @@
 from enum import Enum
 from .utils import Node, DoublyLinkList
+import numpy as np
 
 
 class JobStatus(Enum):
     COMPLETED = 0
     IDLE = 1
     RUNNING = 2
-
 
 class Job(Node):
     def __init__(
@@ -18,11 +18,15 @@ class Job(Node):
         self._process_list = (
             process_list  # job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         )
+        self._busy_time = 0
+        self._wait_time = 0
         self._progress = 1  # 加工进度 代表第progess道工序待加工，0 代表加工完成
         self._status = JobStatus.IDLE
         self._machine = None  # 正在加工该job的机器id，0表示目前没有被加工
         self._t_process = 0  # 当前工序需被加工的时间
         self._t_processed = 0  # 当前工序已经被加工时间
+        self._due_time = 0 #作业的截至日期
+        self._completed_time = 0 #作业的完成时间
         self._inert_time = insert_time  # 作业插入时间
 
     def get_state_code(self):
@@ -33,13 +37,15 @@ class Job(Node):
             self._id,
             self._status.value,
             self._progress,
+            self._process_num - self._progress,
+            self._wait_time,
+            self.get_slack_ratio(),
             0 if self._machine is None else self._machine.id,
             (
                 0
                 if self._status == JobStatus.COMPLETED
                 else self.current_progress_remaining_time()
             ),
-            self._process_num - self._progress,
         ]
 
     def get_t_process(self, machine_id):
@@ -68,7 +74,7 @@ class Job(Node):
         self._status = JobStatus.RUNNING
         self._rest = time_step
 
-    def unload_machine(self):
+    def unload_machine(self,time_step):
         """将job从machine卸载"""
         if self._status != JobStatus.RUNNING:
             raise ValueError("job is not running")
@@ -77,6 +83,7 @@ class Job(Node):
 
         # print(f'j机器{self.machine.id} unload job {self.id}')
         # self._record[-1][-1] += self._t_processed
+
         self._machine = None
         self._t_process = 0
         self._t_processed = 0
@@ -86,6 +93,17 @@ class Job(Node):
             if self._progress == self._process_num + 1
             else JobStatus.IDLE
         )
+        self._completed_time = (
+            time_step
+            if self._progress == self._process_num + 1
+            else 0
+
+        )
+    
+    def get_wait_time_rate(self, time_step):
+        self._wait_time = time_step - self._busy_time
+        return (time_step - self._busy_time) / time_step if time_step > 0 else 0
+
 
     def is_completed(self):
         """判断是否所有工序都完成"""
@@ -98,11 +116,12 @@ class Job(Node):
     def is_on_processing(self):
         """判断是否正在加工"""
         return self._status == JobStatus.RUNNING
-
+    
+    
     def run(self, min_run_timestep, time_step):
         """执行min_run_timestep 时序"""
         self._t_processed += min_run_timestep
-
+        self._busy_time += min_run_timestep
         if min_run_timestep <= 0:
             raise ValueError("min_run_timestep must be greater than 0")
 
@@ -117,7 +136,7 @@ class Job(Node):
             )
 
         if self._t_processed == self._t_process:  # 当前工序加工完成
-            self.unload_machine()
+            self.unload_machine(time_step)
             self._est = time_step + min_run_timestep
 
     def current_progress_remaining_time(self):
@@ -153,7 +172,25 @@ class Job(Node):
         if reminder <= 0:
             raise ValueError("reminder is negative or zero")
         return reminder
-
+    
+    def get_trad_time(self):
+        time = 0
+        tight = np.random.rand()
+        # print(tight)
+        for p in self._process_list:
+            time += sum(p.values())/len(p.values())
+        self._due_time = int(1.5 * time)
+        return time
+    
+    def get_slack_ratio (self):
+        ratio = 0
+        if self._status == JobStatus.COMPLETED:
+            ratio = (self._due_time - self._completed_time)/(self._completed_time + 1e-8)
+        else:
+            remaining_time = self.get_remaining_avg_time()
+            ratio = (self._due_time - remaining_time) / (self._due_time + 1e-8)
+        return ratio
+    
     @property
     def id(self):
         return self._id

@@ -31,6 +31,10 @@ class Machine(Node):
         self.busy_time = 0
 
     def get_state(self):
+        if self._status == MachineStatus.IDLE:
+            return 0
+        if self._status == MachineStatus.RUNNING:
+            return 1
         # if self._status == MachineStatus.IDLE:
         #     return self._state[0]
         # if self._status == MachineStatus.RUNNING:
@@ -121,7 +125,6 @@ class Machine(Node):
 
     def get_utilization_rate(self, time_step):
         """获取利用率"""
-
         return self.busy_time / time_step if time_step > 0 else 0
 
     def get_idle_time(self, time_step):

@@ -2,8 +2,8 @@ import os
 import torch
 import numpy as np
 import json
-import matplotlib.pyplot as plt
-from scipy.signal import savgol_filter
+# import matplotlib.pyplot as plt
+# from scipy.signal import savgol_filter
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.MAPPO import AsyncMAPPO
 from scheduling_env.basic_scheduling_algorithms import noname_2
@@ -17,7 +17,7 @@ def train_async_mappo(
     data_path = (
         os.path.dirname(os.path.abspath(__file__)) + "/scheduling_env/data/train_data/"
     )
-    job_name = "Mk06.fjs"
+    job_name = "ela01.fjs"
     job_path = data_path + job_name
     record = {
         "reward": {},
@@ -174,15 +174,15 @@ mappo = AsyncMAPPO(
     device=PARAMS["device"],
 )
 
-# train_async_mappo(
-#     env=env,
-#     mappo=mappo,
-#     num_episodes=PARAMS["num_episodes"],
-#     batch_size=PARAMS["batch_size"],
-#     epochs=10,
-#     max_steps=200,
-# )
-scheduling_algotithm(
+train_async_mappo(
     env=env,
+    mappo=mappo,
     num_episodes=PARAMS["num_episodes"],
+    batch_size=PARAMS["batch_size"],
+    epochs=10,
+    max_steps=200,
 )
+# scheduling_algotithm(
+#     env=env,
+#     num_episodes=PARAMS["num_episodes"],
+# )
