@@ -91,9 +91,10 @@ if __name__ == "__main__":
             "SRO":[],
             "CR":[],
         }
-    data_path = PARAMS["data_path"] + str(ur) + "/"
-    jobs_name = natsort.natsorted(os.listdir(data_path))
+
     for ur in PARAMS["UR"]:
+        data_path = PARAMS["data_path"] + str(ur) + "/"
+        jobs_name = natsort.natsorted(os.listdir(data_path))
         for job in jobs_name:     
             env_rl = FJSEvalEnv(
                 obs_dim=PARAMS["obs_dim"],
@@ -110,6 +111,8 @@ if __name__ == "__main__":
 
     
     for ur in PARAMS["UR"]:
+        data_path = PARAMS["data_path"] + str(ur) + "/"
+        jobs_name = natsort.natsorted(os.listdir(data_path))
         for sr in PARAMS["SR"]:
             for job in jobs_name:
                 env_sr = FJSEvalEnv(

@@ -301,13 +301,14 @@ class TrainingEnv:
             ]
         else:
             reward = 0
-        utilization = self.compute_UR() # [self.current_machine.id-1]
-        [self.reward_calculator.update_machine_utilization(self.current_machine.id-1, u,timestamp=self.time_step) for u in utilization]
-        if done:
-            reward = 0
-            self.rewards = [self.reward_calculator.calculate_machine_reward(i,self.time_step) for i,u in enumerate(utilization)]
-            self.rewards = [x[0] for x in self.rewards]
-        # reward,_ = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
+        utilization = self.compute_UR() [self.current_machine.id-1]
+        # [self.reward_calculator.update_machine_utilization(self.current_machine.id-1, u,timestamp=self.time_step) for u in utilization]
+        self.reward_calculator.update_machine_utilization(self.current_machine.id-1, utilization, timestamp=self.time_step)
+        # if done:
+        #     reward = 0
+        #     self.rewards = [self.reward_calculator.calculate_machine_reward(i,self.time_step) for i,u in enumerate(utilization)]
+        #     self.rewards = [x[0] for x in self.rewards]
+        reward,_ = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
         return obs_i, obs_mask, global_state, state_mask, reward, done, truncated
 
     def step_by_sr(self, action):

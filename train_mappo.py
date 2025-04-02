@@ -80,9 +80,9 @@ def train_async_mappo(
             obs_mask = next_obs_mask
             global_state = next_global_state
             state_mask = next_state_mask
-        mappo.update_last_reward(env.rewards)
-        for i,r in enumerate(env.rewards):
-            G[f"agent_{i+1}"] += r
+        # mappo.update_last_reward(env.rewards)
+        # for i,r in enumerate(env.rewards):
+        #     G[f"agent_{i+1}"] += r
         list(
             record["reward"][f"agent_{machine.id}"].append(G[f"agent_{machine.id}"])
             for machine in env.machines
@@ -169,7 +169,7 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
 
 
 PARAMS = {
-    "num_episodes": 5000,
+    "num_episodes": 2000,
     "batch_size": 12,
     "actor_lr": 3e-5,
     "critic_lr": 3e-4,
