@@ -81,14 +81,14 @@ class TrainingEnv:
 
     def is_decision_machine(self, machine):
         """
-        是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策
+        是否是需要做出决策的agent,当agent只能选择空闲时,则不需要做出决策
         """
         if not machine.is_idle() or machine.step_decision_made(self._time_step):
             return False
 
         for job in self._job_list:
-            if job.is_wating_for_machine() and job.match_machine(machine.id):
-                return True
+           if job.is_wating_for_machine() and job.match_machine(machine.id):
+                return True 
         return False
 
     def get_decsion_machines(self):
@@ -115,6 +115,7 @@ class TrainingEnv:
         self._machine_num, self.job_info_list = fetch_job_info(jobs_path)
         self.job_num = 0  # 实时作业数
         self._job_list = []
+
         self.insert_job()
         self._machines = MachineList(self._machine_num)
         machine: Machine = self._machines.head
@@ -196,8 +197,8 @@ class TrainingEnv:
                 machine.get_utilization_rate(self._time_step),
                 np.mean(
                     [
-                        agent.get_utilization_rate(self._time_step)
-                        for agent in self._machine_list
+                        machine.get_utilization_rate(self._time_step)
+                        for machine in self._machine_list 
                     ]
                 ),
                 self._time_step / 100,
@@ -241,7 +242,7 @@ class TrainingEnv:
         # if truncated:
         #     reward = -100
         # elif done:
-        #     reward = 800-self._time_step
+        #     reward = 800-self._time_step 
         # else:
         #     reward = 0
         reward = self.compute_single_reward(self._current_machine.id)
@@ -255,7 +256,7 @@ class TrainingEnv:
             # print(self.max_span)
         self.rewards[self._current_machine.id - 1] += reward
         return state_i, reward, done, truncated
-
+    #基础调度规则
     def step_by_sr(self, job):
         self._current_machine.update_decision_time(self._time_step)
         self._current_machine.load_job(job, self._time_step)
@@ -288,7 +289,6 @@ class TrainingEnv:
                 return True
             machine = machine.next
         return False
-
     def compute_single_reward(self, agent_id, lamda_1=0, lamda_2=1):
         """
         计算单个agent的reward
@@ -301,10 +301,20 @@ class TrainingEnv:
         u_i = utiliaction_rates[agent_id - 1]
 
         return lamda_1 * (u_i / u_mean) - lamda_2 * (np.abs(u_mean - u_i) / u_mean)
-        # return -np.abs(u_i - u_mean)
-        # return u_i
-        # return (utiliaction_rate/u_max) - lamda_2 * (np.abs())
-
+    def compute_trad(sefl, job):
+        '''如果作业超过截至日期，就给他一个很大的惩罚'''
+        if job.is_completed():
+            return 1
+        else:
+            return -100
+    def compute_makespan(self):
+        """"如果作业完成则给一个奖励，否则给一个惩罚"""
+        for job in self._job_list:
+            if not job.is_completed():
+                return -1
+            else:
+                return 1
+            
     def compute_UR(self):
         utiliaction_rates = [
             agent.get_utilization_rate(self._time_step) for agent in self._machine_list

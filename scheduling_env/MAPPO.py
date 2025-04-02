@@ -21,7 +21,6 @@ set_seed(42)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 # 定义Actor网络 - 策略网络
 class ActorNetwork(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -92,6 +91,7 @@ class ReplayBuffer:
             self.buffer[-1][7] = experience[5]
             self.buffer[-1][8] = experience[6]
             self.buffer[-1][4] = False
+            # print(experience)
         self.buffer.append(experience)
 
     def sample(self, batch_size):
@@ -227,12 +227,13 @@ class MAPPOAgent:
 
         # 获取所有经验
         batch = self.buffer.buffer
+        # print(batch)
 
         # 提取经验数据
         obs_batch = np.array([x[0] for x in batch])
         action_batch = np.array([x[1] for x in batch])
         reward_batch = np.array([x[2] for x in batch])
-        next_obs_batch = np.array([x[3] for x in batch])
+        # next_obs_batch = np.array([x[3] for x in batch])
         done_batch = np.array([x[4] for x in batch])
         global_state_batch = np.array([x[5] for x in batch])
         state_mask_batch = np.array([x[6] for x in batch])
@@ -243,9 +244,9 @@ class MAPPOAgent:
         # 转换为张量
         obs_tensor = torch.FloatTensor(obs_batch).to(device)
         action_tensor = torch.LongTensor(action_batch).to(device)
-        reward_tensor = torch.FloatTensor(reward_batch).to(device)
-        next_obs_tensor = torch.FloatTensor(next_obs_batch).to(device)
-        done_tensor = torch.FloatTensor(done_batch).to(device)
+        # reward_tensor = torch.FloatTensor(reward_batch).to(device)
+        # next_obs_tensor = torch.FloatTensor(next_obs_batch).to(device)
+        # done_tensor = torch.FloatTensor(done_batch).to(device)
         global_state_tensor = torch.FloatTensor(global_state_batch).to(device)
         state_mask_tensor = torch.BoolTensor(state_mask_batch).to(device)
         next_global_state_tensor = torch.FloatTensor(next_global_state_batch).to(device)
@@ -378,7 +379,7 @@ class MAPPO:
         entropy_coef=0.01,
         buffer_capacity=10000,
         gae_lambda=0.95,
-        share_parameters=False,
+        share_parameters=True,
         num_heads=5,
         device=torch.device("cpu"),
     ):
@@ -510,7 +511,7 @@ class AsyncMAPPO(MAPPO):
         entropy_coef=0.01,
         buffer_capacity=10000,
         gae_lambda=0.95,
-        share_parameters=False,
+        share_parameters=True,
         num_heads=5,
         device=torch.device("cpu"),
     ):

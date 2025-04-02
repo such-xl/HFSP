@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import json
 import matplotlib.pyplot as plt
-from scipy.signal import savgol_filter
+# from scipy.signal import savgol_filter
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.MAPPO import AsyncMAPPO
 from scheduling_env.basic_scheduling_algorithms import noname_2
@@ -17,7 +17,7 @@ def train_async_mappo(
     data_path = (
         os.path.dirname(os.path.abspath(__file__)) + "/scheduling_env/data/train_data/"
     )
-    job_name = "Mk06.fjs"
+    job_name = "ela01.fjs"
     job_path = data_path + job_name
     record = {
         "reward": {},
@@ -73,7 +73,7 @@ def train_async_mappo(
         record["makespan"][f"episode_{episode}"] = env.time_step
 
         # mappo.update_reward(reward)
-        actor_loss, critic_loss, entropy = mappo.update(batch_size, epochs)
+        actor_loss, critic_loss, _ = mappo.update(batch_size, epochs)
         make_span_history.append(env.time_step)
 
         print(
@@ -83,6 +83,21 @@ def train_async_mappo(
     with open("record.json", "w") as f:
         json.dump(record, f)
 
+def plt_fig(data):
+
+    x = np.arange(len(data))  # x 轴对应索引
+
+    # 画折线图
+    plt.figure(figsize=(8, 4))
+    plt.plot(x, data, linestyle="-", color="r", label="Data Trend")
+
+    # 添加标题和标签
+    plt.title("1D Array Line Chart")
+    plt.xlabel("Index")
+    plt.ylabel("Value")
+    # plt.legend()
+    # plt.grid(True)
+    plt.savefig("wait_time")
 
 def scheduling_algotithm(
     env,
@@ -174,15 +189,15 @@ mappo = AsyncMAPPO(
     device=PARAMS["device"],
 )
 
-# train_async_mappo(
-#     env=env,
-#     mappo=mappo,
-#     num_episodes=PARAMS["num_episodes"],
-#     batch_size=PARAMS["batch_size"],
-#     epochs=10,
-#     max_steps=200,
-# )
-scheduling_algotithm(
+train_async_mappo(
     env=env,
+    mappo=mappo,
     num_episodes=PARAMS["num_episodes"],
+    batch_size=PARAMS["batch_size"],
+    epochs=10,
+    max_steps=200,
 )
+# scheduling_algotithm(
+#     env=env,
+#     num_episodes=PARAMS["num_episodes"],
+# )

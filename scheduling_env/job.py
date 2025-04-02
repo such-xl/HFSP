@@ -18,6 +18,7 @@ class Job(Node):
         self._process_list = (
             process_list  # job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
         )
+        self.is_completed_time = -1 #完工时间
         self._progress = 1  # 加工进度 代表第progess道工序待加工，0 代表加工完成
         self._status = JobStatus.IDLE
         self._machine = None  # 正在加工该job的机器id，0表示目前没有被加工
@@ -27,19 +28,20 @@ class Job(Node):
 
     def get_state_code(self):
         """
-        获取job的状态编码 [job_id,状态[0,1,2],当前工序,当前工序的机器id,当前工序剩余加工时间,剩余工序数]
+        获取job的状态编码 [job_id,状态[0,1,2],当前工序,当前工序的机器id,当前工序剩余加工时间,剩余工序数,完工时间]
         """
         return [
             self._id,
             self._status.value,
-            self._progress,
-            0 if self._machine is None else self._machine.id,
+            self._progress, #当前的加工进度
+            0 if self._machine is None else self._machine.id, #当前的机器id
             (
                 0
                 if self._status == JobStatus.COMPLETED
                 else self.current_progress_remaining_time()
             ),
-            self._process_num - self._progress,
+            self._process_num - self._progress, #剩余工序数
+            
         ]
 
     def get_t_process(self, machine_id):
