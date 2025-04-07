@@ -6,14 +6,14 @@ import json
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.MAPPO import AsyncMAPPO
 
-from scheduling_env.basic_scheduling_algorithms import EDD,MS,SRO,CR
+from scheduling_env.basic_scheduling_algorithms import EDD,MS,SRO,CR,noname_2
 from scheduling_env.utils import ExponentialTempScheduler
 
 def train_async_mappo(
     env: TrainingEnv,
     mappo: AsyncMAPPO,
     num_episodes=1000,
-    batch_size=64,
+    batch_size=8,
     epochs=10,
     output_path="default",
 ):
@@ -34,6 +34,7 @@ def train_async_mappo(
     temp_scheduler = ExponentialTempScheduler(
         initial_temp=5.0, min_temp=0.01, decay_rate=0.995
     )
+    current_temp = 0
     action = None
     for episode in range(num_episodes):
         G = {}
@@ -96,7 +97,8 @@ def train_async_mappo(
         )
 
         record["makespan"].append(env.time_step)
-        actor_loss, critic_loss, entropy = mappo.update(batch_size, epochs)
+        actor_loss, critic_loss, entropy = mappo.update(batch_size, epochs,tau=current_temp,
+                hard=(current_temp < 0.5),)
         record["actor_loss"].append(actor_loss)
         record["critic_loss"].append(critic_loss)
         record["entropy"].append(entropy)
@@ -135,12 +137,12 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
         done, truncated = False, False
         while not done and not truncated:
             # action = (env.available_jobs, env.current_machine, env.compute_UR())
-            action1 = CR(env.available_jobs, env.time_step)
-            # action = noname(env.available_jobs, env.current_machine, env.compute_UR()) EDD,MS,SRO,CR
-            action2 = EDD(env.available_jobs)
-            action3 = MS(env.available_jobs,env.time_step)
-            action4 = SRO(env.available_jobs,env.time_step)
-            action = np.random.choice([action1,action2,action3,action4])
+            # action1 = CR(env.available_jobs, env.time_step)
+            action = noname_2(env.available_jobs, env.current_machine, env.compute_UR())
+            # action2 = EDD(env.available_jobs)
+            # action3 = MS(env.available_jobs,env.time_step)
+            # action4 = SRO(env.available_jobs,env.time_step)
+            # action = np.random.choice([action1,action2,action3,action4])
             reward, done, truncated = env.step_by_sr(action)
             G[f"agent_{env.current_machine.id}"] += reward
 
@@ -169,7 +171,7 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
 
 
 PARAMS = {
-    "num_episodes": 2000,
+    "num_episodes": 800,
     "batch_size": 12,
     "actor_lr": 3e-5,
     "critic_lr": 3e-4,

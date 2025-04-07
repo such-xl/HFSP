@@ -12,7 +12,6 @@ class AsyncMachineUtilizationReward:
         num_machines (int): 系统中的机器数量
         w1 (float): 平均机器利用率的权重
         w2 (float): 机器利用率标准差的权重
-        w3 (float): 过载惩罚的权重
         safety_threshold (float): 安全负载阈值，超过这个值会被认为是过载
         history_length (int): 历史记录长度
         decay_factor (float): 时间衰减因子，用于权衡最近和较早的利用率数据

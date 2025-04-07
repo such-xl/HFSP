@@ -117,7 +117,7 @@ class TrainingEnv:
             machine for machine in self.machines if self.is_decision_machine(machine)
         ]
 
-        np.random.shuffle(decision_machines)
+        # np.random.shuffle(decision_machines)
         return decision_machines  # 打乱顺序，模拟异步决策
 
     def get_available_jobs(self):
@@ -154,7 +154,7 @@ class TrainingEnv:
         self.available_jobs = self.get_available_jobs()
         obs_i, obs_mask = self.get_obs_i()
         global_state, state_mask = self.get_global_state()
-
+        self.reward_calculator = AsyncMachineUtilizationReward(self.machine_num)
         return obs_i, obs_mask, global_state, state_mask
     def reset(self):
         """
@@ -249,7 +249,6 @@ class TrainingEnv:
         update_avi_jobs = [
             EDD(self.available_jobs),
             SRO(self.available_jobs, self.time_step),
-            # noname_2(self.available_jobs, self.current_machine, self.compute_UR()),
             CR(self.available_jobs,self.time_step),
             MS(self.available_jobs,self.time_step),
         ]

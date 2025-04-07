@@ -39,7 +39,7 @@ def analisy(data_type, id):
     plt.subplot(222)
     plt.title("reward")
     plt.plot(
-        savgol_filter(np.mean(reward_rl, axis=0), window_length=560, polyorder=2),
+        savgol_filter(np.mean(reward_rl, axis=0), window_length=21, polyorder=2),
         label="RL",
     )
     plt.legend()
@@ -47,19 +47,19 @@ def analisy(data_type, id):
     plt.subplot(223)
     plt.title("utilization rate")
     plt.plot(
-        savgol_filter(np.mean(ur_rl, axis=0), window_length=91, polyorder=2),
+        savgol_filter(np.mean(ur_rl, axis=0), window_length=11, polyorder=2),
         label="RL-mean_ur",
     )
     plt.plot(
-        savgol_filter(np.mean(ur_sr, axis=0), window_length=91, polyorder=2),
+        savgol_filter(np.mean(ur_sr, axis=0), window_length=11, polyorder=2),
         label="SR-mean_ur",
     )
     plt.plot(
-        savgol_filter(np.std(ur_rl, axis=0) * 5, window_length=91, polyorder=2),
+        savgol_filter(np.std(ur_rl, axis=0) * 5, window_length=11, polyorder=2),
         label="RL-std_ur",
     )
     plt.plot(
-        savgol_filter(np.std(ur_sr, axis=0) * 5, window_length=91, polyorder=2),
+        savgol_filter(np.std(ur_sr, axis=0) * 5, window_length=11, polyorder=2),
         label="SR-std_ur",
     )
 
@@ -68,14 +68,14 @@ def analisy(data_type, id):
     plt.subplot(224)
     plt.title("train info")
     plt.plot(
-        savgol_filter(actor_loss * 10, window_length=50, polyorder=2),
+        savgol_filter(actor_loss * 10, window_length=21, polyorder=2),
         label="actor_loss",
     )
     plt.plot(
-        savgol_filter(critic_loss, window_length=50, polyorder=2), label="critic_loss"
+        savgol_filter(critic_loss, window_length=21, polyorder=2), label="critic_loss"
     )
     plt.plot(
-        savgol_filter(entropy * 10, window_length=50, polyorder=2), label="entropy"
+        savgol_filter(entropy * 10, window_length=21, polyorder=2), label="entropy"
     )
     plt.legend()
 
@@ -98,26 +98,23 @@ def analisy(data_type, id):
         f"correlation between makespan and ur.std: {correction:.4f}, p_value: {p_value:.2f}"
     )
 
-    # correction, p_value = pearsonr(makespan_rl, wt_rl.mean(axis=0))
-    # print(
-    #     f"correlation between makespan and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
-    # )
-    # correction, p_value = pearsonr(ur_rl.mean(axis=0), wt_rl.mean(axis=0))
-    # print(
-    #     f"correlation between ur.mean and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
-    # )
-    # correction, p_value = pearsonr(ur_rl.max(axis=0), wt_rl.mean(axis=0))
-    # print(
-    #     f"correlation between ur.max and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
-    # )
-    # correction, p_value = pearsonr(ur_rl.min(axis=0), wt_rl.mean(axis=0))
-    # print(
-    #     f"correlation between ur.min and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
-    # )
-    # correction, p_value = pearsonr(ur_rl.std(axis=0), wt_rl.mean(axis=0))
-    # print(
-    #     f"correlation between ur.std and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
-    # )
+
+    correction, p_value = pearsonr(ur_rl.max(axis=0), wt_rl.mean(axis=0))
+    print(
+        f"correlation between ur.mean and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
+    )
+    correction, p_value = pearsonr(ur_rl.min(axis=0), wt_rl.mean(axis=0))
+    print(
+        f"correlation between ur.max and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
+    )
+    correction, p_value = pearsonr(ur_rl.mean(axis=0), wt_rl.mean(axis=0))
+    print(
+        f"correlation between ur.min and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
+    )
+    correction, p_value = pearsonr(ur_rl.std(axis=0), wt_rl.mean(axis=0))
+    print(
+        f"correlation between ur.std and wt.mean: {correction:.4f}, p_value: {p_value:.2f}"
+    )
 
     # print("====================================")
     # correction, p_value = pearsonr(makespan_rl,reward_rl.mean(axis=0))

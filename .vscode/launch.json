@@ -8,8 +8,8 @@
       "name": "Python Debugger: Main File",
       "type": "debugpy",
       "request": "launch",
-      // "program": "${workspaceFolder}/train_mappo.py",
-      "program": "${workspaceFolder}/experiment_jsp.py",
+      "program": "${workspaceFolder}/train_mappo.py",
+      // "program": "${workspaceFolder}/experiment_jsp.py",
       "console": "integratedTerminal"
     },
     // {

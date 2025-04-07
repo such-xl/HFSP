@@ -97,7 +97,7 @@ class ActorNetwork(PPONetwork):
         x = self.mlp(x)
         # mask_new = mask.clone().detach()
         # mask_new[:,-2] = True
-        x = x.masked_fill(mask[:,:-1], -1e9)  # 过滤无效动作
+        # x = x.masked_fill(mask[:,:-1], -1e9)  # 过滤无效动作
         return x
 
     def get_action(self, state, mask, tau=1.0, hard=False, eval_mode=False):
@@ -117,20 +117,17 @@ class ActorNetwork(PPONetwork):
             y_hard = torch.zeros_like(logits).scatter_(-1, index.unsqueeze(-1), 1.0)
             y = F.softmax(gumbel_logits, dim=-1)
             y_out = y_hard - y.detach() + y
+            dist = Categorical(y_out)
+            log_prob = dist.log_prob(index)
+            return index.item(), log_prob, dist.entropy()
         else:
             # 软Gumbel-Softmax实现
             gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
             y_out = F.softmax((logits + gumbels) / tau, dim=-1)
-        if hard:
-            action = index
-            dist = Categorical(y_out)
-            log_prob = dist.log_prob(action)
-            return action.item(), log_prob, dist.entropy()
-        else:
-            # 为了与现有接口兼容，你可能需要从连续分布中取样
             dist = Categorical(y_out)
             action = dist.sample()
             log_prob = dist.log_prob(action)
+
             return action.item(), log_prob, dist.entropy()
         ...
 
