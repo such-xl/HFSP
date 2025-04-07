@@ -4,7 +4,7 @@ from collections import deque
 
 class AsyncMachineUtilizationReward:
     def __init__(self, num_machines, w1=1.0, w2=0.5, safety_threshold=0.9, 
-                 history_length=100, decay_factor=0.95):
+                 history_length=600, decay_factor=0.95):
         """
         初始化异步奖励函数计算器（无锁版本）
         
@@ -12,7 +12,6 @@ class AsyncMachineUtilizationReward:
         num_machines (int): 系统中的机器数量
         w1 (float): 平均机器利用率的权重
         w2 (float): 机器利用率标准差的权重
-        w3 (float): 过载惩罚的权重
         safety_threshold (float): 安全负载阈值，超过这个值会被认为是过载
         history_length (int): 历史记录长度
         decay_factor (float): 时间衰减因子，用于权衡最近和较早的利用率数据
@@ -159,7 +158,7 @@ class AsyncMachineUtilizationReward:
         
         
         # 总奖励
-        total_reward = (0.2 * local_reward + 0.8 * global_reward -0.5) *10
+        total_reward = (0.2 * local_reward + 0.8 * global_reward -0.5)
         
         # 返回奖励和详细分解
         reward_details = {

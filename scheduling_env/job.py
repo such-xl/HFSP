@@ -36,7 +36,8 @@ class Job(Node):
         获取job的状态编码 [job_id,状态[0,1,2],当前工序,当前工序的机器id,当前工序剩余加工时间,剩余工序数]
         """
         return [
-            self._type,
+            # self._type,
+            0,
             self._status.value,
             self._progress,
             0 if self._machine is None else self._machine.id,

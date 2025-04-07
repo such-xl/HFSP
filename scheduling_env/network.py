@@ -17,7 +17,7 @@ class PositionalEncoding(nn.Module):
     """
     标准的Transformer位置编码实现
     """
-    def __init__(self, d_model, dropout=0.1, max_len=50):
+    def __init__(self, d_model, dropout=0.1, max_len=300):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -79,14 +79,21 @@ class ActorNetwork(PPONetwork):
             nn.Linear(10 * input_dim, 6 * input_dim),
             nn.LeakyReLU(),
             nn.Dropout(dropout_rate),
+            # nn.BatchNorm1d(6 * input_dim),
             nn.Linear(6 * input_dim, 3 * input_dim),  # 输出单个值
             nn.LeakyReLU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(3 * input_dim, output_dim),
+            # nn.BatchNorm1d(3 * input_dim),
+            nn.Linear(3 * input_dim,3 * input_dim),
+            nn.LeakyReLU(),
+            nn.Dropout(dropout_rate),
+            # nn.BatchNorm1d(3 * input_dim),
         )
+        self.final_layer = nn.Linear(3 * input_dim, output_dim)
         self.norm_after_embedding = nn.LayerNorm(2 * input_dim)
         self.norm_after_attention = nn.LayerNorm(2 * input_dim)
         self.positional_encoding = PositionalEncoding(2 * input_dim)
+        nn.init.zeros_(self.final_layer.bias)
         # self.apply(self.init_weights)
     def forward(self, x, mask=None):
         x = self.state_embedding(x)
@@ -95,9 +102,10 @@ class ActorNetwork(PPONetwork):
         x = self.attention(x, x, x, key_padding_mask=mask)[0]
         x = self.norm_after_attention(x)
         x = self.mlp(x)
+        x = self.final_layer(x)
         # mask_new = mask.clone().detach()
         # mask_new[:,-2] = True
-        x = x.masked_fill(mask[:,:-1], -1e9)  # 过滤无效动作
+        # x = x.masked_fill(mask[:,:-1], -1e9)  # 过滤无效动作
         return x
 
     def get_action(self, state, mask, tau=1.0, hard=False, eval_mode=False):
@@ -117,55 +125,68 @@ class ActorNetwork(PPONetwork):
             y_hard = torch.zeros_like(logits).scatter_(-1, index.unsqueeze(-1), 1.0)
             y = F.softmax(gumbel_logits, dim=-1)
             y_out = y_hard - y.detach() + y
+            dist = Categorical(y_out)
+            log_prob = dist.log_prob(index)
+            return index.item(), log_prob, dist.entropy()
         else:
             # 软Gumbel-Softmax实现
             gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
             y_out = F.softmax((logits + gumbels) / tau, dim=-1)
-        if hard:
-            action = index
-            dist = Categorical(y_out)
-            log_prob = dist.log_prob(action)
-            return action.item(), log_prob, dist.entropy()
-        else:
-            # 为了与现有接口兼容，你可能需要从连续分布中取样
             dist = Categorical(y_out)
             action = dist.sample()
             log_prob = dist.log_prob(action)
+
             return action.item(), log_prob, dist.entropy()
         ...
 
-# 定义Critic网络 - 价值网络
-class CriticNetwork(PPONetwork):
-    def __init__(self, input_dim, num_heads=4, dropout_rate=0.1):
+# Critic网络
+class CriticNetwork(nn.Module):
+    def __init__(self,input_dim,droput_rate=0.1):
         super(CriticNetwork, self).__init__()
-        # 状态嵌入层
-        self.state_embedding = nn.Linear(input_dim, 2 * input_dim)
-        # 多头注意力层
-        self.attention = nn.MultiheadAttention(
-            2 * input_dim, num_heads, batch_first=True, dropout=dropout_rate
-        )
-        # MLP 层
         self.mlp = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(60 * input_dim, 30 * input_dim),
+            nn.Linear(1 * input_dim, 4 * input_dim),
+            nn.BatchNorm1d(4 * input_dim),
             nn.LeakyReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(30 * input_dim, 15 * input_dim),  # 输出单个值
-            nn.LeakyReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(15 * input_dim, 1),
+            nn.Dropout(droput_rate),
+            nn.Linear(4 * input_dim, 8 * input_dim),
+            nn.Dropout(droput_rate),
+            nn.Linear(8 * input_dim, 1),
         )
-        self.norm_after_embedding = nn.LayerNorm(2 * input_dim)
-        self.norm_after_attention = nn.LayerNorm(2 * input_dim)
-        self.positional_encoding = PositionalEncoding(2 * input_dim)
-        # self.apply(self.init_weights)
-        # self.init_positional_encoding(self.positional_encoding)
-
-    def forward(self, x, mask=None):
-        x = self.state_embedding(x)
-        x = self.positional_encoding(x)
-        x = self.norm_after_embedding(x)
-        x = self.attention(x, x, x, key_padding_mask=mask)[0]
-        x = self.norm_after_attention(x)
-        # x = x[:, -1, :]
+    def forward(self, x):
         return self.mlp(x)
+
+# # 定义Critic网络 - 价值网络
+# class CriticNetwork(PPONetwork):
+#     def __init__(self, input_dim, num_heads=4, dropout_rate=0.1):
+#         super(CriticNetwork, self).__init__()
+#         # 状态嵌入层
+#         self.state_embedding = nn.Linear(input_dim, 2 * input_dim)
+#         # 多头注意力层
+#         self.attention = nn.MultiheadAttention(
+#             2 * input_dim, num_heads, batch_first=True, dropout=dropout_rate
+#         )
+#         # MLP 层
+#         self.mlp = nn.Sequential(
+#             nn.Flatten(),
+#             nn.Linear(48*2*input_dim, 48 * input_dim),
+#             nn.LeakyReLU(),
+#             nn.Dropout(dropout_rate),
+#             nn.Linear(48 * input_dim, 24 * input_dim),  # 输出单个值
+#             nn.LeakyReLU(),
+#             nn.Dropout(dropout_rate),
+#             nn.Linear(24 * input_dim, 1),
+#         )
+#         self.norm_after_embedding = nn.LayerNorm(2 * input_dim)
+#         self.norm_after_attention = nn.LayerNorm(2 * input_dim)
+#         self.positional_encoding = PositionalEncoding(2 * input_dim)
+#         # self.apply(self.init_weights)
+#         # self.init_positional_encoding(self.positional_encoding)
+
+#     def forward(self, x, mask=None):
+#         x = self.state_embedding(x)
+#         x = self.positional_encoding(x)
+#         x = self.norm_after_embedding(x)
+#         x = self.attention(x, x, x, key_padding_mask=mask)[0]
+#         x = self.norm_after_attention(x)
+#         # x = x[:, -1, :]
+#         return self.mlp(x)

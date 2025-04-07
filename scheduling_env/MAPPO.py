@@ -57,7 +57,7 @@ class MAPPOAgent:
         # 创建策略网络和价值网络
         self.actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
         # 价值网络使用全局状态作为输入
-        self.critic = CriticNetwork(global_state_dim, num_heads).to(device)
+        self.critic = CriticNetwork(global_state_dim).to(device)
         # 创建优化器
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=critic_lr)
@@ -77,11 +77,10 @@ class MAPPOAgent:
 
         return action, log_prob.cpu().numpy(), entropy.cpu().numpy()
 
-    def evaluate_state(self, global_state, global_state_mask=None):
+    def evaluate_state(self, global_state):
         state_tensor = torch.FloatTensor(global_state).to(self.device)
-        state_mask = torch.BoolTensor(global_state_mask).to(self.device)
         with torch.no_grad():
-            value = self.critic(state_tensor, state_mask)
+            value = self.critic(state_tensor)
         return value.cpu().numpy()
 
     def store_experience(
@@ -94,9 +93,7 @@ class MAPPOAgent:
         next_obs_mask,
         done,
         global_state,
-        state_mask,
         next_global_state,
-        next_state_mask,
         log_prob,
         buffer,
     ):
@@ -109,9 +106,7 @@ class MAPPOAgent:
             next_obs_mask,
             done,
             global_state,
-            state_mask,
             next_global_state,
-            next_state_mask,
             log_prob,
         )
 
@@ -120,23 +115,22 @@ class MAPPOAgent:
     def update_last_reward(self,reward,buffer):
         buffer.update_last_reward(reward)
     def compute_advantages(self, rewards, values, next_values, dones):
-        advantages = np.zeros_like(rewards, dtype=np.float32)
-        returns = np.zeros_like(rewards, dtype=np.float32)
-        gae = 0
+        advantages = torch.zeros_like(rewards, dtype=torch.float32,device=self.device)
+        returns = torch.zeros_like(rewards, dtype=torch.float32,device=self.device)
+        gae = torch.tensor(0.0, dtype=torch.float32,device=self.device)
         for t in reversed(range(len(rewards))):
             if t == len(rewards) - 1:
                 next_value = next_values[t]
             else:
                 next_value = values[t + 1]
 
-            delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
-            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
+            delta = rewards[t] + self.gamma * next_value * (1 - dones[t].to(torch.float32)) - values[t]
+            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t].to(torch.float32)) * gae
             advantages[t] = gae
             returns[t] = advantages[t] + values[t]
-
         return advantages, returns
 
-    def update(self, buffer, batch_size=9, epochs=100):
+    def update(self, buffer, batch_size=8, epochs=10,tau=0.1,hard=False):
         if len(buffer) < batch_size:
             return 0, 0, 0  # 如果没有足够的样本，则不更新
 
@@ -150,33 +144,24 @@ class MAPPOAgent:
         next_obs_mask_tensor = batch["next_obs_mask"]
         done_tensor = batch["dones"]
         global_state_tensor = batch["global_states"]
-        state_mask_tensor = batch["state_masks"]
         next_global_state_tensor = batch["next_global_states"]
-        next_state_mask_tensor = batch["next_state_masks"]
         old_log_prob_tensor = batch["log_probs"]
         # 计算当前价值估计
         with torch.no_grad():
             values = (
-                self.critic(global_state_tensor, state_mask_tensor)
+                self.critic(global_state_tensor)
                 .squeeze(-1)
-                .cpu()
-                .numpy()
             )
             next_values = (
-                self.critic(next_global_state_tensor, next_state_mask_tensor)
+                self.critic(next_global_state_tensor)
                 .squeeze(-1)
-                .cpu()
-                .numpy()
             )
 
         # 计算优势函数和回报
-        advantages, returns = self.compute_advantages(
-            reward_tensor.cpu().numpy(), values, next_values, done_tensor.cpu().numpy()
+        advantages_tensor, returns_tensor = self.compute_advantages(
+            reward_tensor, values, next_values, done_tensor
         )
 
-        # 将优势和回报转换为张量
-        advantages_tensor = torch.FloatTensor(advantages).to(self.device)
-        returns_tensor = torch.FloatTensor(returns).to(self.device)
 
         # 标准化优势
         advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (
@@ -190,7 +175,7 @@ class MAPPOAgent:
 
         for _ in range(epochs):
             # 随机采样小批量
-            rand_idx = np.random.permutation(len(batch))
+            rand_idx = torch.randperm(len(batch)).to(self.device)
             n_batches = len(rand_idx) // batch_size + (
                 1 if len(rand_idx) % batch_size > 0 else 0
             )
@@ -206,19 +191,33 @@ class MAPPOAgent:
                 batch_advantage = advantages_tensor[batch_idx]
                 batch_return = returns_tensor[batch_idx]
                 batch_global_state = global_state_tensor[batch_idx]
-                batch_state_mask = state_mask_tensor[batch_idx]
 
                 # 计算当前策略的动作概率
                 logits = self.actor(batch_obs, batch_obs_mask)  # 获取logits
-                logits = logits.masked_fill(batch_obs_mask[:,:-1], float("-inf"))
-                probs = F.softmax(logits, dim=-1)  # 显式应用softmax
-                dist = Categorical(probs)
-                curr_log_prob = dist.log_prob(batch_action)
-                entropy = dist.entropy().mean()
+                # # logits = logits.masked_fill(batch_obs_mask[:,:-1], float("-inf"))
+                # probs = F.softmax(logits, dim=-1)  # 显式应用softmax
+                # dist = Categorical(probs)
+                # curr_log_prob = dist.log_prob(batch_action)
+                # entropy = dist.entropy().mean()
+                # 计算当前策略的动作概率
+                            # 软或硬Gumbel-Softmax采样
+                if hard:  # 如果硬 Gumbel-Softmax
+                    gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
+                    gumbel_logits = (logits + gumbels) / tau
+                    index = gumbel_logits.argmax(dim=-1)
+                    y_hard = torch.zeros_like(logits).scatter_(-1, index.unsqueeze(-1), 1.0)
+                    y = F.softmax(gumbel_logits, dim=-1)
+                    y_out = y_hard - y.detach() + y
+                else:  # 软 Gumbel-Softmax
+                    gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
+                    y_out = F.softmax((logits + gumbels) / tau, dim=-1)
 
+                            # 计算当前策略的动作概率分布
+                dist = Categorical(y_out)
+                curr_log_prob = dist.log_prob(batch_action)  # 当前采样的对数概率
+                entropy = dist.entropy().mean()  # 熵值
                 # 计算重要性采样比率
                 ratio = torch.exp(curr_log_prob - batch_old_log_prob)
-
                 # 计算裁剪的目标函数
                 surr1 = ratio * batch_advantage
                 surr2 = (
@@ -228,7 +227,7 @@ class MAPPOAgent:
                 actor_loss = -torch.min(surr1, surr2).mean()
 
                 # 计算价值损失
-                values = self.critic(batch_global_state, batch_state_mask).squeeze(-1)
+                values = self.critic(batch_global_state).squeeze(-1)
                 critic_loss = F.mse_loss(values, batch_return)
 
                 # 添加熵正则化
@@ -244,7 +243,7 @@ class MAPPOAgent:
                 loss.backward()
                 # 梯度裁剪，防止梯度爆炸
                 nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
-                nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+                nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
 
@@ -331,14 +330,14 @@ class AsyncMAPPO:
         """为当前活动智能体选择动作"""
         return self.agents.select_action(obs, obs_mask, tau, hard,eval_mode)
 
-    def update(self, batch_size=64, epochs=100):
+    def update(self, batch_size=64, epochs=100,tau=0.1,hard=False):
         total_actor_loss = 0
         total_critic_loss = 0
         total_entropy = 0
 
         for buffer in self.buffers:
             actor_loss, critic_loss, entropy = self.agents.update(
-                buffer, batch_size, epochs
+                buffer, batch_size, epochs,tau,hard
             )
             total_actor_loss += actor_loss
             total_critic_loss += critic_loss
@@ -360,9 +359,7 @@ class AsyncMAPPO:
         next_obs_mask,
         done,
         global_state,
-        state_mask,
         next_global_state,
-        next_state_mask,
         log_prob,
         agent_id,
     ):
@@ -376,9 +373,7 @@ class AsyncMAPPO:
             next_obs_mask,
             done,
             global_state,
-            state_mask,
             next_global_state,
-            next_state_mask,
             log_prob,
             self.buffers[agent_id],
         )

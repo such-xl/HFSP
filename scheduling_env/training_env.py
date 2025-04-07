@@ -154,7 +154,7 @@ class TrainingEnv:
         self.available_jobs = self.get_available_jobs()
         obs_i, obs_mask = self.get_obs_i()
         global_state, state_mask = self.get_global_state()
-
+        self.reward_calculator = AsyncMachineUtilizationReward(self.machine_num)
         return obs_i, obs_mask, global_state, state_mask
     def reset(self):
         """
@@ -169,6 +169,7 @@ class TrainingEnv:
         self.uncomplete_job = JobList()
         self.complete_job = JobList()
         self.reward_calculator = AsyncMachineUtilizationReward(self.machine_num)
+        self.pre_ur_mean = 1
         jobs = None
         self.job_list = []
         with open(self.file_path, "r") as f:
@@ -184,25 +185,25 @@ class TrainingEnv:
         self.current_machine = decision_machines[0]
         self.available_jobs = self.get_available_jobs()
         obs_i, obs_mask = self.get_obs_i()
-        global_state, state_mask = self.get_global_state()
+        global_state = self.get_global_state()
 
-        return obs_i, obs_mask,global_state,state_mask
+        return obs_i, obs_mask,global_state
     def get_global_state(self):
         """
         获取全局状态
         """
-        global_state, state_mask = [], []
-        job = self.uncomplete_job.head
-        while job:
-            global_state.append(job.get_state_code())
-            state_mask.append(False)
-            job = job.next
-        for i in range(self.state_len - self.uncomplete_job.length):  # todo list
-            global_state.append([0 for _ in range(self.obs_dim)])
-            state_mask.append(True)
-        if state_mask[0] == True:
-            state_mask[0] = False
-        return global_state, state_mask
+        utilization_rates = [
+            agent.get_utilization_rate(self.time_step) for agent in self.machines
+        ]
+        global_state = [
+            np.mean(utilization_rates),
+            np.std(utilization_rates),
+            np.max(utilization_rates),
+            np.min(utilization_rates),
+            utilization_rates[self.current_machine.id - 1],
+            self.pre_ur_mean,
+        ]
+        return global_state
 
     def run(self):
         """
@@ -232,7 +233,7 @@ class TrainingEnv:
             job = next_job
         # print(f'{self.complete_job.length}:{self.uncomplete_job.length}')
         done = True if self.complete_job.length >= self.max_job_num else False
-        truncated = True if self.time_step > 5000 else False
+        truncated = True if self.time_step > 100000 else False
         while (
             not done and not truncated and not self.is_any_machine_need_to_decision()
         ):  # 没有结束且没有空闲机器，继续
@@ -249,7 +250,6 @@ class TrainingEnv:
         update_avi_jobs = [
             EDD(self.available_jobs),
             SRO(self.available_jobs, self.time_step),
-            # noname_2(self.available_jobs, self.current_machine, self.compute_UR()),
             CR(self.available_jobs,self.time_step),
             MS(self.available_jobs,self.time_step),
         ]
@@ -262,11 +262,12 @@ class TrainingEnv:
             obs_i.append([0 for _ in range(self.obs_dim)])
         obs_i.append(
             [
-                self.current_machine.id,
+                self.current_machine.id / 10,
                 self.current_machine.get_utilization_rate(self.time_step),
                 np.mean(self.compute_UR()),
                 np.std(self.compute_UR()),
-                np.log(self.time_step) if self.time_step > 1 else 0,
+                # np.log(self.time_step) if self.time_step > 1 else 0,
+                self.pre_ur_mean,
                 0,
             ]
         )
@@ -290,26 +291,19 @@ class TrainingEnv:
             obs_i = [[0 for _ in range(self.obs_dim)] for _ in range(self.obs_len)]
             obs_mask = [True for _ in range(self.obs_len)]
             obs_mask[0] = False
-        global_state, state_mask = self.get_global_state()
-        if done:
-            reward = 0
-            self.rewards =[
-                self.compute_single_reward(
-                    i + 1
-                ) * 10
-                for i in range(self.machine_num)
-            ]
-        else:
-            reward = 0
-        utilization = self.compute_UR() [self.current_machine.id-1]
+        global_state = self.get_global_state()
+        # utilization = self.compute_UR() [self.current_machine.id-1]
         # [self.reward_calculator.update_machine_utilization(self.current_machine.id-1, u,timestamp=self.time_step) for u in utilization]
-        self.reward_calculator.update_machine_utilization(self.current_machine.id-1, utilization, timestamp=self.time_step)
+        # self.reward_calculator.update_machine_utilization(self.current_machine.id-1, utilization, timestamp=self.time_step)
         # if done:
         #     reward = 0
         #     self.rewards = [self.reward_calculator.calculate_machine_reward(i,self.time_step) for i,u in enumerate(utilization)]
         #     self.rewards = [x[0] for x in self.rewards]
-        reward,_ = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
-        return obs_i, obs_mask, global_state, state_mask, reward, done, truncated
+        # reward,_ = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
+        utilization = self.compute_UR()
+        reward = np.mean(utilization) - self.pre_ur_mean
+        self.pre_ur_mean = np.mean(utilization)
+        return obs_i, obs_mask, global_state, reward*10, done, truncated
 
     def step_by_sr(self, action):
         if action is None:

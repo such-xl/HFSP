@@ -106,12 +106,10 @@ class PPOBuffer:
             action,
             reward,
             next_obs,
-            next_obs_mask,
             done,
             global_state,
             state_mask,
             next_global_state,
-            next_state_mask,
             log_prob,
         """
         self.device = device
@@ -131,16 +129,10 @@ class PPOBuffer:
         )
         self.dones = torch.zeros((buffer_size), dtype=torch.bool, device=device)
         self.global_states = torch.zeros(
-            (buffer_size, state_len, state_dim), dtype=torch.float32, device=device
-        )
-        self.state_masks = torch.zeros(
-            (buffer_size, state_len), dtype=torch.bool, device=device
+            (buffer_size, state_dim), dtype=torch.float32, device=device
         )
         self.next_global_states = torch.zeros(
-            (buffer_size, state_len, state_dim), dtype=torch.float32, device=device
-        )
-        self.next_state_masks = torch.zeros(
-            (buffer_size, state_len), dtype=torch.bool, device=device
+            (buffer_size,state_dim), dtype=torch.float32, device=device
         )
         self.log_probs = torch.zeros((buffer_size), dtype=torch.float32, device=device)
         self.ptr = 0
@@ -157,9 +149,7 @@ class PPOBuffer:
         next_obs_mask,
         done,
         global_state,
-        state_mask,
         next_global_state,
-        next_state_mask,
         log_prob,
     ):
         """
@@ -193,14 +183,8 @@ class PPOBuffer:
             self.global_states[self.ptr] = torch.tensor(
                 global_state, dtype=torch.float32, device=self.device
             )
-            self.state_masks[self.ptr] = torch.tensor(
-                state_mask, dtype=torch.bool, device=self.device
-            )
             self.next_global_states[self.ptr] = torch.tensor(
                 next_global_state, dtype=torch.float32, device=self.device
-            )
-            self.next_state_masks[self.ptr] = torch.tensor(
-                next_state_mask, dtype=torch.bool, device=self.device
             )
             self.log_probs[self.ptr] = torch.tensor(
                 log_prob, dtype=torch.float32, device=self.device
@@ -215,9 +199,6 @@ class PPOBuffer:
                 )
                 self.next_global_states[prev_idx] = torch.tensor(
                     global_state, dtype=torch.float32, device=self.device
-                )
-                self.next_state_masks[prev_idx] = torch.tensor(
-                    next_state_mask, dtype=torch.bool, device=self.device
                 )
                 self.dones[prev_idx] = torch.tensor(
                     False, dtype=torch.bool, device=self.device
@@ -246,9 +227,7 @@ class PPOBuffer:
             "next_obs_mask": self.next_obs_masks[valid_indices],
             "dones": self.dones[valid_indices],
             "global_states": self.global_states[valid_indices],
-            "state_masks": self.state_masks[valid_indices],
             "next_global_states": self.next_global_states[valid_indices],
-            "next_state_masks": self.next_state_masks[valid_indices],
             "log_probs": self.log_probs[valid_indices],
         }
 
