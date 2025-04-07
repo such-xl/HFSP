@@ -1,96 +1,274 @@
-from collections import deque, namedtuple
+from collections import namedtuple
 from typing import NamedTuple
-
 import numpy as np
 import torch
-#import numba as nb
 
-from .utils import StateNorm
-
-bufferEntity = namedtuple('Transition',
-                          ('spms', 'spjs', 'sojs', 'actions', 'rewards', 'nspms', 'nspjs', 'nsojs', 'dones',
-                           'mask_spj', 'mask_soj', 'mask_nspj', 'mask_nsoj'))
+bufferEntity = namedtuple(
+    "Transition",
+    (
+        "state",
+        "action",
+        "next_state",
+        "reward",
+        "done",
+    ),
+)
 
 
 class ReplayBuffer:
-    def __init__(self, capacity, job_dim, job_seq_len, machine_dim, machine_seq_len):
-        # self.buffer = np.zeros((capacity, 8773))
-        self.state_norm = StateNorm(job_dim, job_seq_len, machine_dim, machine_seq_len)
-
+    def __init__(
+        self,
+        capacity,
+        state_seq_len,
+        state_dim,
+    ):
         self.pos = 0
         self.buffer_size = capacity
-        self.full = False
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        
-        with torch.no_grad():
-            self.buffer = torch.zeros((capacity, 5173)).to(self.device)
+        self.device = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
 
-    def add(self, s_p_m, s_p_j, s_o_j, action, reward, n_s_p_m, n_s_p_j, n_s_o_j, done):
-        spj, mask_spj = self.state_norm.job_seq_norm(s_p_j, 0)
-        soj, mask_soj = self.state_norm.job_seq_norm(s_o_j, 1)
-        nspj, mask_nspj = self.state_norm.job_seq_norm(n_s_p_j, 0)
-        nsoj, mask_nsoj = self.state_norm.job_seq_norm(n_s_o_j, 1)
-        self.buffer[self.pos % self.buffer_size] *= 0
-        self.buffer[self.pos % self.buffer_size, 0: 5] += self.to_torch(s_p_m[0])
-        self.buffer[self.pos % self.buffer_size, 5: 1265] += self.to_torch(spj.ravel())
-        self.buffer[self.pos % self.buffer_size, 1265: 2525] += self.to_torch(soj.ravel())
-        self.buffer[self.pos % self.buffer_size, 2525: 2526] += self.to_torch(action)
-        self.buffer[self.pos % self.buffer_size, 2526: 2527] += self.to_torch(reward)
-        self.buffer[self.pos % self.buffer_size, 2527: 2532] += self.to_torch(n_s_p_m[0])
-        self.buffer[self.pos % self.buffer_size, 2532: 3792] += self.to_torch(nspj.ravel())
-        self.buffer[self.pos % self.buffer_size, 3792: 5052] += self.to_torch(nsoj.ravel())
-        self.buffer[self.pos % self.buffer_size, 5052: 5053] += self.to_torch((done))
-        self.buffer[self.pos % self.buffer_size, 5053: 5083] += self.to_torch(mask_spj)
-        self.buffer[self.pos % self.buffer_size, 5083: 5113] += self.to_torch(mask_soj)
-        self.buffer[self.pos % self.buffer_size, 5113: 5143] += self.to_torch(mask_nspj)
-        self.buffer[self.pos % self.buffer_size, 5143: 5173] += self.to_torch(mask_nsoj)
-        self.pos += 1
-        if self.pos == self.buffer_size:
-            self.full = True
-            self.pos = 0
+        self.entity_size = state_dim * 2 + 1 + 1 + 1
+        self.buffer = torch.zeros((capacity, self.entity_size)).to(self.device)
+        self.seq_len = state_seq_len
+        self.is_full = False
+        self.points = [0]
+
+    def add(self, data):
+        """
+
+        state,actions,next_state,reward,done
+
+        """
+        self.buffer[self.pos] *= 0
+        p = 0
+        for x in data:
+            x = np.array(x).ravel()
+            self.buffer[self.pos, p : p + x.size] += self.to_torch(x)
+            p += x.size
+            if self.size() == 0:
+                self.points.append(p)
+        self.pos = (self.pos + 1) % self.buffer_size
+        if self.pos == self.buffer_size - 1:
+            self.is_full = True
 
     def sample(self, batch_size):
         samples_idx = np.random.randint(0, self.size(), size=batch_size)
         ten = self.buffer[samples_idx, :]
-        # ten = self.to_torch(tmp)
-        return BufferEntity(ten[:, 0:5].reshape((batch_size,1,-1)),
-                            ten[:, 5: 1265].reshape((batch_size, 30, -1)),
-                            ten[:, 1265: 2525].reshape((batch_size, 30, -1)),
-                            ten[:, 2525: 2526],
-                            ten[:, 2526: 2527], 
-                            ten[:, 2527: 2532].reshape((batch_size,1,-1)),
-                            ten[:, 2532: 3792].reshape((batch_size, 30, -1)),
-                            ten[:, 3792: 5052].reshape((batch_size, 30, -1)),
-                            ten[:, 5052: 5053], 
-                            ten[:, 5053: 5083], 
-                            ten[:, 5083: 5113],
-                            ten[:, 5113: 5143], 
-                            ten[:, 5143: 5173],
-                            )
-        # return bufferEntity(*container)
-        # return tmp
+        p = self.points
+        return BufferEntity(
+            ten[:, p[0] : p[1]].reshape(batch_size, self.seq_len, -1),  # state
+            ten[:, p[1] : p[2]],  # action
+            ten[:, p[2] : p[3]].reshape(batch_size, self.seq_len, -1),  # next_state
+            ten[:, p[3] : p[4]],  # reward                                 # reward
+            ten[:, p[4] : p[5]],  # done                                    # done
+        )
 
     def size(self):
-        return self.buffer_size if self.full else self.pos
+        return self.buffer_size if self.is_full else self.pos
 
     def to_torch(self, array: np.ndarray, copy: bool = True) -> torch.Tensor:
         with torch.no_grad():
             if copy:
-                return torch.tensor(array, device=self.device, dtype=torch.float)
-            return torch.as_tensor(array, device=self.device, dtype=torch.float)
+                return torch.tensor(array, dtype=torch.float, device=self.device)
+            return torch.as_tensor(array, dtype=torch.float, device=self.device)
 
 
 class BufferEntity(NamedTuple):
-    spms: torch.Tensor
-    spjs: torch.Tensor
-    sojs: torch.Tensor
+    states: torch.Tensor
     actions: torch.Tensor
+    next_states: torch.Tensor
     rewards: torch.Tensor
-    nspms: torch.Tensor
-    nspjs: torch.Tensor
-    nsojs: torch.Tensor
     dones: torch.Tensor
-    mask_spj: torch.Tensor
-    mask_soj: torch.Tensor
-    mask_nspj: torch.Tensor
-    mask_nsoj: torch.Tensor
+
+
+class PPOBuffer:
+    """
+    简化版PPO缓冲区，直接使用PyTorch Tensor存储数据以提高读取速度
+    仅实现基本的存储和获取功能
+    """
+
+    def __init__(
+        self,
+        obs_dim,
+        obs_len,
+        state_dim,
+        state_len,
+        buffer_size,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    ):
+        """
+        初始化PPO缓冲区
+
+        参数:
+            obs,
+            obs_mask,
+            action,
+            reward,
+            next_obs,
+            next_obs_mask,
+            done,
+            global_state,
+            state_mask,
+            next_global_state,
+            next_state_mask,
+            log_prob,
+        """
+        self.device = device
+        self.obs = torch.zeros(
+            (buffer_size, obs_len, obs_dim), dtype=torch.float32, device=device
+        )
+        self.obs_masks = torch.zeros(
+            (buffer_size, obs_len), dtype=torch.bool, device=device
+        )
+        self.actions = torch.zeros((buffer_size), dtype=torch.int64, device=device)
+        self.rewards = torch.zeros((buffer_size), dtype=torch.float32, device=device)
+        self.next_obs = torch.zeros(
+            (buffer_size, obs_len, obs_dim), dtype=torch.float32, device=device
+        )
+        self.next_obs_masks = torch.zeros(
+            (buffer_size, obs_len), dtype=torch.float32, device=device
+        )
+        self.dones = torch.zeros((buffer_size), dtype=torch.bool, device=device)
+        self.global_states = torch.zeros(
+            (buffer_size, state_len, state_dim), dtype=torch.float32, device=device
+        )
+        self.state_masks = torch.zeros(
+            (buffer_size, state_len), dtype=torch.bool, device=device
+        )
+        self.next_global_states = torch.zeros(
+            (buffer_size, state_len, state_dim), dtype=torch.float32, device=device
+        )
+        self.next_state_masks = torch.zeros(
+            (buffer_size, state_len), dtype=torch.bool, device=device
+        )
+        self.log_probs = torch.zeros((buffer_size), dtype=torch.float32, device=device)
+        self.ptr = 0
+        self.buffer_size = buffer_size
+        self.full = False
+
+    def push(
+        self,
+        obs,
+        obs_mask,
+        action,
+        reward,
+        next_obs,
+        next_obs_mask,
+        done,
+        global_state,
+        state_mask,
+        next_global_state,
+        next_state_mask,
+        log_prob,
+    ):
+        """
+        存储一个时间步的交互数据
+        支持直接存入tensor或numpy数组
+        """
+
+        with torch.no_grad():
+            # 将数据存入缓冲区
+            self.obs[self.ptr] = torch.tensor(
+                obs, dtype=torch.float32, device=self.device
+            )
+            self.obs_masks[self.ptr] = torch.tensor(
+                obs_mask, dtype=torch.bool, device=self.device
+            )
+            self.actions[self.ptr] = torch.tensor(
+                action, dtype=torch.int64, device=self.device
+            )
+            self.rewards[self.ptr] = torch.tensor(
+                reward, dtype=torch.float32, device=self.device
+            )
+            self.next_obs[self.ptr] = torch.tensor(
+                next_obs, dtype=torch.float32, device=self.device
+            )
+            self.next_obs_masks[self.ptr] = torch.tensor(
+                next_obs_mask, dtype=torch.bool, device=self.device
+            )
+            self.dones[self.ptr] = torch.tensor(
+                done, dtype=torch.bool, device=self.device
+            )
+            self.global_states[self.ptr] = torch.tensor(
+                global_state, dtype=torch.float32, device=self.device
+            )
+            self.state_masks[self.ptr] = torch.tensor(
+                state_mask, dtype=torch.bool, device=self.device
+            )
+            self.next_global_states[self.ptr] = torch.tensor(
+                next_global_state, dtype=torch.float32, device=self.device
+            )
+            self.next_state_masks[self.ptr] = torch.tensor(
+                next_state_mask, dtype=torch.bool, device=self.device
+            )
+            self.log_probs[self.ptr] = torch.tensor(
+                log_prob, dtype=torch.float32, device=self.device
+            )
+            if self.ptr > 0:
+                prev_idx = (self.ptr - 1) % self.buffer_size
+                self.next_obs[prev_idx] = torch.tensor(
+                    obs, dtype=torch.float32, device=self.device
+                )
+                self.next_obs_masks[prev_idx] = torch.tensor(
+                    obs_mask, dtype=torch.bool, device=self.device
+                )
+                self.next_global_states[prev_idx] = torch.tensor(
+                    global_state, dtype=torch.float32, device=self.device
+                )
+                self.next_state_masks[prev_idx] = torch.tensor(
+                    next_state_mask, dtype=torch.bool, device=self.device
+                )
+                self.dones[prev_idx] = torch.tensor(
+                    False, dtype=torch.bool, device=self.device
+                )
+        # 更新指针
+        self.ptr = (self.ptr + 1) % self.buffer_size
+        if self.ptr == 0:
+            self.full = True
+
+    def get(self):
+        """
+        获取缓冲区中的所有数据
+        返回: 包含所有数据的字典，所有数据都是tensor格式
+        """
+        if self.full:
+            valid_indices = slice(0, self.buffer_size)
+        else:
+            valid_indices = slice(0, self.ptr)
+
+        data_dict = {
+            "obs": self.obs[valid_indices],
+            "obs_masks": self.obs_masks[valid_indices],
+            "actions": self.actions[valid_indices],
+            "rewards": self.rewards[valid_indices],
+            "next_obs": self.next_obs[valid_indices],
+            "next_obs_mask": self.next_obs_masks[valid_indices],
+            "dones": self.dones[valid_indices],
+            "global_states": self.global_states[valid_indices],
+            "state_masks": self.state_masks[valid_indices],
+            "next_global_states": self.next_global_states[valid_indices],
+            "next_state_masks": self.next_state_masks[valid_indices],
+            "log_probs": self.log_probs[valid_indices],
+        }
+
+        return data_dict
+    def update_last_reward(self, reward):
+        self.rewards[(self.ptr - 1) % self.buffer_size] = torch.tensor(
+            reward, dtype=torch.float32, device=self.device
+        )
+    def clear(self):
+        """
+        清空缓冲区
+        """
+        self.ptr = 0
+        self.full = False
+
+    def __len__(self):
+        """
+        返回缓冲区中实际存储的经验数量
+        """
+        if self.full:
+            return self.buffer_size
+        else:
+            return self.ptr

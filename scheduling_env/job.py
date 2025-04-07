@@ -1,126 +1,265 @@
-from .utils import Node
-class Job(Node):
-    code_len = 0
-    def __init__(self,id:int,process_num:int,process_list:list,encode:list,insert_time:int) -> None:
-        super().__init__(None)
-        self._id = id #job序号,从1开始
-        self._process_num = process_num         #job工序数
-        self._process_list = process_list       #job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
-        self._progress = 1                       # 加工进度 代表第progess道工序待加工，0 代表加工完成
-        self._status = 0                        # 0 已完成   1 加工中  2待加工
-        self._machine_id = 0                     # 正在加工该job的机器id，0表示目前没有被加工
-        self._t_process = 0                    # 当前工序需被加工的时间
-        self._t_processed = 0                  # 当前工序已经被加工时间
-        self._encode = [self._id,1,0,0]+encode              #[job_id,带加工工序或正在加工工序，加工机器，加工时间,xxx...x] 编码
-        self._insert_time = insert_time        #进入环境的时间
-        self._earliest_start_time = self._insert_time  #当前工序的实际最早开始时间
-        self._pest = self.get_pest()            #获取每道工序全局理论最早结束时间
-    def get_pest(self):
-        pest = [self._insert_time]
-        ct = self._insert_time
-        for p in self._process_list:
-            pt = 1e9
-            for t in p.values():
-                pt = min(pt,t)
-            ct += pt
-            pest.append(ct)
-        return pest
-    def show(self):
-        print(len(self._encode))
-        # for i,p in enumerate(self._process_list,start=1):
-        #     print(f'工序{i}')
-        #     print(p)
+from enum import Enum
+from .utils import Node, DoublyLinkList
 
-    #获取当前工序最早完成时间 
-    def get_earliest_end_time(self):
-        min_t = 1e9 
-        for t in self._process_list[self._progress-1].values():
-           min_t = min(t,min_t)
-           
-        return self._earliest_start_time + min_t
-    
+
+class JobStatus(Enum):
+    COMPLETED = 0
+    IDLE = 1
+    RUNNING = 2
+
+
+class Job(Node):
+    def __init__(
+        self, id: int, type: int, process_num: int, process_list: list, insert_time: int, due_time: int
+    ) -> None:
+        super().__init__(None)
+        self._id = id  # job序号,从1开始
+        self._process_num = process_num  # job工序数
+        self._type = type
+        self._process_list = (
+            process_list  # job工序列表[{机器1:加工时间1,机器2:加工时间2},...{}]
+        )
+        self._due_time = due_time  # job截止时间
+        self._progress = 1  # 加工进度 代表第progess道工序待加工，0 代表加工完成
+        self._status = JobStatus.IDLE
+        self._machine = None  # 正在加工该job的机器id，0表示目前没有被加工
+        self._t_process = 0  # 当前工序需被加工的时间
+        self._t_processed = 0  # 当前工序已经被加工时间
+        self._insert_time = insert_time  # 作业插入时间
+        self._process_time = 0  # 作业总加工时间
+        self._completed_time = 0  # 作业完成时间
+        self._wait_time = 0  # 作业等待时间
+        self._tard_time = 0
+
+    def get_state_code(self):
+        """
+        获取job的状态编码 [job_id,状态[0,1,2],当前工序,当前工序的机器id,当前工序剩余加工时间,剩余工序数]
+        """
+        return [
+            self._type,
+            self._status.value,
+            self._progress,
+            0 if self._machine is None else self._machine.id,
+            (
+                0
+                if self._status == JobStatus.COMPLETED
+                else self.current_progress_remaining_time()
+            ),
+            self._process_num - self._progress,
+        ]
 
     def get_t_process(self, machine_id):
-        return self._process_list[self._progress-1][machine_id]
-    
-    # 判断当前工序是否可被agent_i执行
-    def match_machine(self,machine_id) -> bool:
-        return machine_id in self._process_list[self._progress-1]
-    
-    # 将job装载至machine
-    def load_to_machine(self,machine_id):
-        self._machine_id = machine_id
-        self._t_process = self.get_t_process(machine_id)
-        self._encode[-2] = machine_id
+        """
+        获取当前工序在机器machine上的加工时间
+
+        """
+        if self.is_completed():
+            raise ValueError("job is completed")
+        return self._process_list[self._progress - 1][machine_id]
+
+    def match_machine(self, machine_id) -> bool:
+        """
+        判断当前工序是否可以被机器machine_id加工
+        """
+        return machine_id in self._process_list[self._progress - 1]
+
+    def load_to_machine(self, machine, time_step):
+        """将job装载至machine"""
+        if self._status != JobStatus.IDLE:
+            raise ValueError("job is not idle")
+        if self._status == JobStatus.COMPLETED:
+            raise ValueError("job is completed")
+        if self._machine:
+            raise ValueError("job has machine")
+        self._t_process = self.get_t_process(machine.id)
+        self._machine = machine
         self._t_processed = 0
-        self._status = 1
-    #加工一个时序
-    def run_a_time_step(self):
-        self._t_processed += 1
-        self._encode[-1] += 1
-        if self._t_processed == self._t_process:        #当前工序加工完成
-            self._t_processed = 0
-            self._t_process = 0
-            self._machine_id = 0
-            self._progress +=1
-            self._encode[-3] +=1
-            self._encode[-2] = 0
-            self._encode[-1] = 0
-            if self._progress == self._process_num+1:    # 最后一道工序加工完成
-                self._progress = 0
-                self._encode[-3] = 0
-                self._status = 0
-            else:
-                self._status = 2
-    #获取job state 编码
-    def get_job_state(self):
-        ''''''
-        job_state = [self._id,self._machine_id,self._t_processed,0]
-        for p in self._process_list[self._progress-1:self._progress-1+3]:
-            job_state.append(next(iter(p.values())))
-            for key in p.keys():
-                job_state.append(key)
-            job_state.append(0)
-        if len(job_state)<42:
-            job_state.extend([0]*(42-len(job_state)))
-        Job.code_len = max(Job.code_len,len(job_state))
-        return job_state
-    def earliest_start_time_update(self,timestep):
-        self._earliest_start_time = timestep
+        self._status = JobStatus.RUNNING
+        self._rest = time_step
+
+    def unload_machine(self):
+        """将job从machine卸载"""
+        if self._status != JobStatus.RUNNING:
+            raise ValueError("job is not running")
+        if not self._machine:
+            raise ValueError("job has no machine")
+
+        # print(f'j机器{self.machine.id} unload job {self.id}')
+        # self._record[-1][-1] += self._t_processed
+        self._machine = None
+        self._t_process = 0
+        self._t_processed = 0
+        self._progress += 1
+        self._status = (
+            JobStatus.COMPLETED
+            if self._progress == self._process_num + 1
+            else JobStatus.IDLE
+        )
+
+    def is_completed(self):
+        """判断是否所有工序都完成"""
+        return self._status == JobStatus.COMPLETED
+
+    def is_wating_for_machine(self):
+        """判断是否等待机器加工"""
+        return self._status == JobStatus.IDLE
+
+    def is_on_processing(self):
+        """判断是否正在加工"""
+        return self._status == JobStatus.RUNNING
+
+    def compute_wait_time(self, time_step):
+
+        self._wait_time = (time_step - self._insert_time) - self._process_time
+        self._tard_time = max(0, time_step - self._due_time)
+
+    def run(self, min_run_timestep, time_step):
+        """执行min_run_timestep 时序"""
+        self._t_processed += min_run_timestep
+        self._process_time += min_run_timestep
+        if min_run_timestep <= 0:
+            raise ValueError("min_run_timestep must be greater than 0")
+
+        if self._t_processed > self._t_process:
+            raise ValueError(
+                "加工时间超过了工序时间",
+                self._t_processed,
+                self._t_process,
+                min_run_timestep,
+                self._status,
+                self._machine,
+            )
+
+        if self._t_processed == self._t_process:  # 当前工序加工完成
+            self.unload_machine()
+            self._est = time_step + min_run_timestep
+
+    def current_progress_remaining_time(self):
+        """获取当前工序剩余加工时间"""
+        if self._status == JobStatus.COMPLETED:
+            raise ValueError("job is completed")
+        reminder = 0
+        if self._status == JobStatus.IDLE:
+            times = self._process_list[self._progress - 1].values()
+            reminder = sum(times) / len(times)
+            # reminder = min(self._process_list[self._progress-1].values())
+        elif self._status == JobStatus.RUNNING:
+            reminder = self._t_process - self._t_processed
+        if reminder <= 0:
+            raise ValueError("reminder is negative or zero")
+        return reminder
+
+    def get_remaining_avg_time(self):
+        """获取平均剩余加工时间"""
+        if self._status == JobStatus.COMPLETED:
+            raise ValueError("job is completed")
+        reminder = 0
+        if self._status == JobStatus.IDLE:
+            reminder = sum(self._process_list[self._progress - 1].values()) / len(
+                self._process_list[self._progress - 1].values()
+            )
+        else:
+            reminder = self._t_process - self._t_processed
+
+        reminder_progress = self._process_list[self._progress :]
+        for p in reminder_progress:
+            reminder += sum(p.values()) / len(p.values())
+        if reminder <= 0:
+            raise ValueError("reminder is negative or zero")
+        return reminder
+
     @property
     def id(self):
         return self._id
+
+    @property
+    def type(self):
+        return self._type
+
     @property
     def process_num(self):
-        return self.process_num
+        return self._process_num
+
     @property
     def process_list(self):
         return self._process_list
+
     @property
     def progress(self):
         return self._progress
+
     @property
     def status(self):
         return self._status
+
     @property
-    def machine_id(self):
-        return self._machine_id
+    def machine(self):
+        return self._machine
+
     @property
     def t_process(self):
         return self._t_process
+
     @property
     def t_processed(self):
         return self._t_processed
-    @property
-    def encode(self):
-        return self._encode
+
     @property
     def insert_time(self):
-        return  self._insert_time
+        return self._insert_time
+
     @property
-    def earliest_start_time(self):
-        return self._earliest_start_time
+    def process_time(self):
+        return self._process_time
+
     @property
-    def pest(self):
-        return self._pest
-    
+    def completed_time(self):
+        return self._completed_time
+
+    @property
+    def wait_time(self):
+        return self._wait_time
+    @property
+    def due_time(self):
+        return self._due_time
+    @property
+    def tard_time(self):
+        return self._tard_time
+    @due_time.setter
+    def due_time(self, due_time):
+        self._due_time = due_time
+
+class JobList(DoublyLinkList):
+    def __init__(self) -> None:
+        super().__init__()
+
+
+def fetch_job_info(path: str):
+    """
+    从文件中获取作业信息
+    return: 机器数，作业信息
+    """
+    machine_num: int = 0
+    with open(path, "r") as f:
+
+        _, machine_num = map(int, f.readline().split()[0:-1])
+        job_info = []
+        for type, line_str in enumerate(f, start=1):
+
+            line = list(map(int, line_str.split()))
+
+            i, r = 1, 1
+
+            procs: list[dict[int, int]] = []  # 工序列表
+            while i < len(line):
+                # s = f'工序{r} '
+                proc: dict[int, int] = {}  # 单个工序
+                for j in range(line[i]):
+                    # s +=f'机器{line[i+1+j*2]} 耗时{line[i+1+j*2+1]} || '
+                    proc[line[i + 1 + j * 2]] = line[i + 1 + j * 2 + 1]
+
+                procs.append(proc)
+                r += 1
+                i += 1 + line[i] * 2
+            job_info.append({"type": type, "process_num": r - 1, "process_list": procs})
+    return machine_num, job_info

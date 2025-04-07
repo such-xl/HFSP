@@ -111,11 +111,32 @@ class Plotter:
         if self.is_live:
             plt.ion()  # 开启交互模式
         self.colorset = [
-            '#FF69B4', '#FFD700', '#FF4500', '#00FF7F', '#7FFF00', '#FF1493', '#00BFFF', '#FF8C00',
-            '#FFB6C1', '#008080', '#800080', '#9932CC', '#FF6347', '#BA55D3', '#3CB371', '#a1d99b',
-            '#FF00FF', '#a63603', '#228B22', '#6A5ACD', '#F0E68C', '#4682B4', '#E6E6FA', '#d62728'
+            "#FF69B4",
+            "#FFD700",
+            "#FF4500",
+            "#00FF7F",
+            "#7FFF00",
+            "#FF1493",
+            "#00BFFF",
+            "#FF8C00",
+            "#FFB6C1",
+            "#008080",
+            "#800080",
+            "#9932CC",
+            "#FF6347",
+            "#BA55D3",
+            "#3CB371",
+            "#a1d99b",
+            "#FF00FF",
+            "#a63603",
+            "#228B22",
+            "#6A5ACD",
+            "#F0E68C",
+            "#4682B4",
+            "#E6E6FA",
+            "#d62728",
         ]
-        '''
+        """
         self.colorset = [
         '#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c',
         '#98df8a', '#d62728', '#ff9896', '#9467bd', '#c5b0d5',
@@ -138,25 +159,50 @@ class Plotter:
         '#8e7cc3', '#b5a0d8', '#ce6dbd', '#de9ed6', '#f1b6da',
         '#fde0ef', '#3182bd', '#6baed6', '#9ecae1', '#c6dbef'
     ]
-    '''
+    """
 
     def gant_chat(self, data):
-        print(data)
         self.fig, self.ax = plt.subplots()
         machine_num = 0
         for i, info in enumerate(data, start=1):
             for j in info:
-                self.ax.barh(f'job{i}', j[2] - j[1], left=j[1], color=self.colorset[j[0] - 1])
+                self.ax.barh(
+                    f"job{i}", j[2] - j[1], left=j[1], color=self.colorset[j[0] - 1]
+                )
                 machine_num = max(machine_num, j[0])
         patch = []
         for i in range(machine_num):
-            patch.append(mpatches.Patch(color=self.colorset[i], label=f'machine{i + 1}'))
-        self.ax.set_xlabel('time_step')
-        self.ax.set_ylabel('job')
-        self.ax.set_title('gant chat')
+            patch.append(
+                mpatches.Patch(color=self.colorset[i], label=f"machine{i + 1}")
+            )
+        self.ax.set_xlabel("time_step")
+        self.ax.set_ylabel("job")
+        self.ax.set_title("gant chat")
         self.ax.grid(True)
-        plt.legend(handles=patch, loc='best')
+        plt.legend(handles=patch, loc="best")
         plt.tight_layout()
+        plt.savefig("kk.png")
+        plt.show()
+
+    def machine_gant_chat(self, data):
+        self.fig, self.ax = plt.subplots()
+        job_num = 0
+        for i, info in enumerate(data, start=1):
+            for j in info:
+                self.ax.barh(
+                    f"machine{i}", j[2] - j[1], left=j[1], color=self.colorset[j[0]]
+                )
+                job_num = max(job_num, j[0])
+        patch = []
+        # for i in range(job_num):
+        #     patch.append(mpatches.Patch(color=self.colorset[i],label=f'job{i+1}'))
+        self.ax.set_xlabel("time_step")
+        self.ax.set_ylabel("ma")
+        self.ax.set_title("gant chat")
+        self.ax.grid(True)
+        plt.legend(handles=patch, loc="best")
+        plt.tight_layout()
+        plt.savefig("kkm.png")
         plt.show()
 
     def close(self) -> None:
@@ -165,30 +211,13 @@ class Plotter:
         plt.close()
 
 
-class StateNorm:
-    def __init__(self, job_dim, job_seq_len, machine_dim, machine_seq_len) -> None:
-        self.job_dim = job_dim
-        self.job_seq_len = job_seq_len
-        self.machine_dim = machine_dim
-        self.machine_seq_len = machine_seq_len
+class ExponentialTempScheduler:
+    def __init__(self, initial_temp=1.0, min_temp=0.01, decay_rate=0.998):
+        self.initial_temp = initial_temp
+        self.min_temp = min_temp
+        self.decay_rate = decay_rate
+        self.current_temp = initial_temp
 
-    def job_seq_norm(self, job_state, ty):
-        # job_state:[seq_len,encoding_dim]
-        lens = self.job_seq_len
-        if ty == 0:  # machine的候选作业state
-            # lens -= 1
-            ...
-        mask = np.ones((self.job_seq_len,),dtype=bool)
-        mask[:len(job_state)] = False
-        padded_data = np.zeros((self.job_seq_len, self.job_dim))
-        if len(job_state)>0:
-            padded_data[:len(job_state), :] = job_state
-
-        
-        if ty == 0:# 最后一个seq 作为 on_job的注意力嵌入，所以mask要加上一个false
-            mask[-1] = False
-        # 当on_job为空时候，mask也是全True,然后通过attention layer后出现nan,所以要将mask全改为False
-        else:
-            if np.all(mask):
-                mask[:] = False
-        return padded_data, mask
+    def step(self):
+        self.current_temp = self.current_temp * self.decay_rate
+        return max(self.min_temp, self.current_temp)

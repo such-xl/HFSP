@@ -1,266 +1,431 @@
-'''
-    多智能体作业调度训练环境
-    1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
-    2: 判断所有job是否完成 over if done else repeat 1
-'''
-from .job_list import JobList
-from .job import Job
-from .machine_list import MachineList
-import math
-class TrainingEnv():
-    # 初始化环境
-    count_action = 1000
-    def __init__(self,reward_type = 0) -> None:
-        self._action_space = None   #动作空间(0,1)连续值，应对不同情况下不同agent动作空间不一致
-        self._agents_num = 0        #总agent数
-        self._jobs_num  = 0         #总作业数
-        self._completed_jobs = JobList()
-        self._pending_jobs = JobList()
-        self._in_progress_jobs = JobList()
-        self._busy_agents = MachineList(0)
-        self._faulty_agents = MachineList(0)
-        self._idle_agents:MachineList = None
-        self._draw_data = None        #画图信息
-        self._time_step = 0
-        self._draw_data = None
-        self._reward_type = reward_type
-        self._max_len = 0
-    def get_jobs_from_file(self, jobs_path:str):
-        self._agents_num = self._pending_jobs.decode_job_flie(jobs_path)
-        self._jobs_num = self._pending_jobs.length
-        self._idle_agents = MachineList(self._agents_num)
-        self._draw_data = [[] for i in range(self._jobs_num)]
+import random
+import numpy as np
+from .job import Job, JobList, fetch_job_info
+import json
+from .machine import Machine
+from .basic_scheduling_algorithms import EDD,MS,SRO,CR
+from .reward import AsyncMachineUtilizationReward
+np.random.seed(42)
 
-    def get_agent_actions(self,agent_id):
-        act_jobs,act_jobs_id = [],[]                   
-        pending_job = self._pending_jobs.head
-        while pending_job:
-            if pending_job.match_machine(agent_id):             #该job可被当前agent加工
-                act_jobs.append(pending_job)
-                act_jobs_id.append(pending_job.id)
-            pending_job = pending_job.next
-        return act_jobs,act_jobs_id
-         
-    # 所有忙碌agent和job更新一个time step
-    def run_a_time_step(self):
-        s_o_j = []
-        done = False
-        in_progress_job = self._in_progress_jobs.head
-        busy_agent = self._busy_agents.head
-        # 显然，忙碌agent与处理中的job数量总是一致的，且一一对应，所以可以用一个循环处理
-        while in_progress_job and busy_agent:
-            in_progress_job.run_a_time_step()
-            busy_agent.run_a_time_step()
-            if in_progress_job.status == 2:     #工序加工完成，转到待加工链表
-                next_job = in_progress_job.next
-                in_progress_job.earliest_start_time_update(self._time_step+1) #更新当前工序的实际最早开始时间
-                self._in_progress_jobs.disengage_node(in_progress_job)
-                self._pending_jobs.append(in_progress_job)
-                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
-                in_progress_job = next_job
-            elif in_progress_job.status == 0:   #所有工序加工完成，转到已完成链表
-                next_job = in_progress_job.next
-                self._in_progress_jobs.disengage_node(in_progress_job)
-                self._completed_jobs.append(in_progress_job)
-                self._draw_data[in_progress_job.id-1][-1][-1] = self._time_step
-                in_progress_job = next_job
-            else:                               #当前工序，未加工完成
-                s_o_j.append(in_progress_job.get_job_state())
-                in_progress_job = in_progress_job.next
-            if busy_agent.status == 1:          #工序加工结束，转到idle
-                next_agent = busy_agent.next
-                self._busy_agents.disengage_node(busy_agent)
-                self._idle_agents.append(busy_agent)
-                busy_agent = next_agent
-            elif busy_agent.status == 0:        #故障，相应处理，
-                next_agent = busy_agent.next
-                self._busy_agents.disengage_node(busy_agent)
-                '''
-                    故障后相应处理，暂时未做
-                '''
-                self._faulty_agents.append(busy_agent)
-                busy_agent = next_agent
-            else:                               #当前时序，未加工完成
-                busy_agent = busy_agent.next
-        if self._pending_jobs.length + self._in_progress_jobs.length == 0:    # 所有job完成
-            done = True
-        idle_agent = self._idle_agents.head
-        s_p_m = [[0,0,0,0,0]]
-        s_p_j = []
-        act_jobs = []
-        while idle_agent:
-            s_p_m = [self._idle_agents.head.bin_code]
-            act_jobs,_ = self.get_agent_actions(idle_agent.id)
-            for aj in act_jobs:
-                s_p_j.append(aj.get_job_state())
-            if len(act_jobs)>0:
-                break
-            idle_agent = idle_agent.next
-        self._time_step += 1
-        return s_p_m,s_p_j,s_o_j,idle_agent,act_jobs,done
-    def reset(self,jobs_path:str):
-        self._draw_data = None
-        self.get_jobs_from_file(jobs_path) #从文件中获取job和machine信息
-        self._completed_jobs = JobList()
-        #返回 初始化状态，(第一个idle machine(s_p_m),其可选job(s_p_j)正在执行作业job(s_o_j)                        
-        idle_agent = self._idle_agents.head
-        s_p_m = [idle_agent.bin_code]
-        act_jobs, _ = self.get_agent_actions(idle_agent.id)
-        s_p_j = []
-        for aj in act_jobs:
-            s_p_j.append(aj.get_job_state())
-        self._time_step = 0
-        return s_p_m,s_p_j,[],idle_agent,act_jobs   
-    # 
-    def step(self,idle_machine,action,act_jobs):
-        done = False
-        reward = 0
-        TrainingEnv.count_action = min(len(act_jobs),TrainingEnv.count_action)
-        act_jobs.append(0) #代表空闲
-        # action %= len(act_jobs)
-        if self._reward_type == 0:
-            reward = self.reward_func_0(action,act_jobs,idle_machine.id)
-        elif self._reward_type == 1:
-            reward = self.reward_func_1(action,act_jobs,idle_machine.id)
-        elif self._reward_type == 2:
-            reward = self.reward_func_2(action,act_jobs,idle_machine.id)
-        elif self._reward_type == 3:
-            reward = self.reward_func_3(action,act_jobs,idle_machine.id)
+
+class TrainingEnv:
+    # 初始化环境
+    def __init1__(
+        self,
+        obs_dim,
+        obs_len,
+        state_dim,
+        state_len,
+        action_dim,
+        max_job_num,
+        job_file_path,
+    ) -> None:
+        self.obs_dim = obs_dim
+        self.obs_len = obs_len
+        self.state_dim = state_dim
+        self.state_len = state_len
+        self.action_dim = action_dim
+        self.max_job_num = max_job_num
+        self.machine_num, self.job_type = fetch_job_info(
+            path="scheduling_env/data/train_data/Mk06.fjs"
+        )
+        self.machine_num = 10
+        with open(job_file_path, "r") as f:
+            self.job_type = json.load(f)
+            # 转换键
+        for job in self.job_type:
+            for process in job["process_list"]:
+                # 创建新的字典来存储转换后的键
+                new_process = {}
+                for key, value in process.items():
+                    new_process[int(key)] = value  # 将字符串键转换为整数
+                # 用转换后的字典替换原字典
+                job["process_list"][job["process_list"].index(process)] = new_process
+        self.job_arrivals = self.create_job_arriavl_seq()
+    def __init__(
+        self,obs_dim,obs_len,state_dim,state_len,action_dim,max_job_num,job_file_path) -> None:
+
+        self.obs_dim = obs_dim
+        self.obs_len = obs_len
+        self.state_dim = state_dim
+        self.state_len = state_len
+        self.machine_num = 10
+        self.action_dim = action_dim
+        self.max_job_num = max_job_num
+        self.file_path = job_file_path
+
+
+    def create_job_arriavl_seq(self, lambda_rate=0.1):
+        """
+        生成指数分布的间隔时间，并取整
+        """
+        intervals = np.random.exponential(
+            scale=1 / lambda_rate, size=self.max_job_num - 10
+        )
+        intervals = np.round(intervals).astype(int)  # 取整转换为整数
+        arrival_times = np.cumsum(intervals)
+        arrival_times = np.insert(arrival_times, 0, [0] * 10)
+        selected_jobs = [random.choice(self.job_type) for _ in range(self.max_job_num)]
+        arrivals = [(job, time) for job, time in zip(selected_jobs, arrival_times)]
+        arrivals.sort(key=lambda x: x[1])
+        return arrivals
+
+    def insert_job1(self):
+        while (
+            self.job_num < self.max_job_num
+            and self.time_step == self.job_arrivals[self.job_num][1]
+        ):
+            job_info = self.job_arrivals[self.job_num][0]
+            self.uncomplete_job.append(
+                Job(
+                    id=self.job_num + 1,
+                    type=job_info["type"],
+                    process_num=job_info["process_num"],
+                    process_list=job_info["process_list"],
+                    insert_time=self.time_step,
+                    due_time=0,
+                )
+            )
+            self.uncomplete_job.tail.due_time = self.uncomplete_job.tail.get_remaining_avg_time()*np.random.uniform(1,2)+self.time_step
+            self.job_num += 1
+    def insert_job(self):
+        while (
+            self.job_num < self.max_job_num
+            and self.time_step == self.job_list[self.job_num].insert_time
+        ):
+            self.uncomplete_job.append(self.job_list[self.job_num])
+            self.job_num += 1
+
+    def is_decision_machine(self, machine):
+        """
+        是否是需要做出决策的agent，当agent只能选择空闲时，则不需要做出决策
+        """
+        if not machine.is_idle() or machine.step_decision_made(self.time_step):
+            return False
+        job: Job = self.uncomplete_job.head
+        while job:
+            if job.is_wating_for_machine() and job.match_machine(machine.id):
+                return True
+            job = job.next
+        return False
+
+    def get_decsion_machines(self):
+        """
+        获取需要做出决策的机器
+        """
+        decision_machines = [
+            machine for machine in self.machines if self.is_decision_machine(machine)
+        ]
+
+        # np.random.shuffle(decision_machines)
+        return decision_machines  # 打乱顺序，模拟异步决策
+
+    def get_available_jobs(self):
+        """
+        获取可选择的作业列表
+        """
+        available_jobs = []
+        job = self.uncomplete_job.head
+        while job:
+            if job.is_wating_for_machine() and job.match_machine(
+                self.current_machine.id
+            ):
+                available_jobs.append(job)
+            job = job.next
+        return available_jobs
+
+    def reset1(self):
+        """
+        重置环境
+        reutrn:
+            state: 当前job环境状态
+            machine_action: 决策机器的状态
+        """
+        self.time_step, self.job_num = 0, 0
+        self.idle_action = 0
+        self.machines = [Machine(i) for i in range(1, self.machine_num + 1)]
+        self.makespans = [0 for _ in range(self.machine_num)]
+        self.makespan_max = 0
+        self.uncomplete_job = JobList()
+        self.complete_job = JobList()
+        self.insert_job()
+        decision_machines = self.get_decsion_machines()
+        self.current_machine = decision_machines[0]
+        self.available_jobs = self.get_available_jobs()
+        obs_i, obs_mask = self.get_obs_i()
+        global_state, state_mask = self.get_global_state()
+        self.reward_calculator = AsyncMachineUtilizationReward(self.machine_num)
+        return obs_i, obs_mask, global_state, state_mask
+    def reset(self):
+        """
+        重置环境
+        reutrn:
+            state: 当前job环境状态
+            machine_action: 决策机器的状态
+        """
+        self.time_step, self.job_num = 0, 0
+        self.idle_action = 0
+        self.machines = [Machine(i) for i in range(1, self.machine_num + 1)]
+        self.uncomplete_job = JobList()
+        self.complete_job = JobList()
+        self.reward_calculator = AsyncMachineUtilizationReward(self.machine_num)
+        jobs = None
+        self.job_list = []
+        with open(self.file_path, "r") as f:
+            jobs = json.load(f)
+        for i,job in enumerate(jobs,1):
+            process = []
+            for machine_id,process_time in zip(job["machine"],job["process"]):
+                process.append({machine_id+1:process_time})
+            self.job_list.append(Job(i,i,len(job["process"]),process,int(job["insert_time"]),int(job["due_time"])))
+        self.job_list.sort(key=lambda x: x.insert_time)
+        self.insert_job()
+        decision_machines = self.get_decsion_machines()
+        self.current_machine = decision_machines[0]
+        self.available_jobs = self.get_available_jobs()
+        obs_i, obs_mask = self.get_obs_i()
+        global_state, state_mask = self.get_global_state()
+
+        return obs_i, obs_mask,global_state,state_mask
+    def get_global_state(self):
+        """
+        获取全局状态
+        """
+        global_state, state_mask = [], []
+        job = self.uncomplete_job.head
+        while job:
+            global_state.append(job.get_state_code())
+            state_mask.append(False)
+            job = job.next
+        for i in range(self.state_len - self.uncomplete_job.length):  # todo list
+            global_state.append([0 for _ in range(self.obs_dim)])
+            state_mask.append(True)
+        if state_mask[0] == True:
+            state_mask[0] = False
+        return global_state, state_mask
+
+    def run(self):
+        """
+        所有忙碌agent和job更新一个time_step,使得必产生空闲机器
+        在内添加随机时间
+        """
+        # 更新one timestep时序
+        min_run_timestep = 1
+        for machine in self.machines:
+            if not machine.is_running():
+                continue
+            job = machine.job
+
+            machine.run(min_run_timestep, self.time_step)
+
+        self.time_step += min_run_timestep
+
+        if self.job_num < self.max_job_num:
+            self.insert_job()
+        job: Job = self.uncomplete_job.head
+        while job:
+            next_job = job.next
+            if job.is_completed():
+                self.uncomplete_job.disengage_node(job)
+                self.complete_job.append(job)
+                job.compute_wait_time(self.time_step)
+            job = next_job
+        # print(f'{self.complete_job.length}:{self.uncomplete_job.length}')
+        done = True if self.complete_job.length >= self.max_job_num else False
+        truncated = True if self.time_step > 5000 else False
+        while (
+            not done and not truncated and not self.is_any_machine_need_to_decision()
+        ):  # 没有结束且没有空闲机器，继续
+            done, truncated = self.run()
+        return done, truncated
+
+    def get_obs_i(self):
+        """
+        获取machine i 的 obs
+        如果可用作业大于5，则用调度规则选取的作业信息作为state
+        否则
+        """
+
+        update_avi_jobs = [
+            EDD(self.available_jobs),
+            SRO(self.available_jobs, self.time_step),
+            CR(self.available_jobs,self.time_step),
+            MS(self.available_jobs,self.time_step),
+        ]
+        obs_i = [job.get_state_code() for job in update_avi_jobs]
+        self.available_jobs = update_avi_jobs
+
+        obs_mask = [False if i < len(obs_i) else True for i in range(self.obs_len)]
+        obs_mask[-1] = False
+        for i in range(self.obs_len - 1 - len(obs_i)):
+            obs_i.append([0 for _ in range(self.obs_dim)])
+        obs_i.append(
+            [
+                self.current_machine.id,
+                self.current_machine.get_utilization_rate(self.time_step),
+                np.mean(self.compute_UR()),
+                np.std(self.compute_UR()),
+                np.log(self.time_step) if self.time_step > 1 else 0,
+                0,
+            ]
+        )
+        return obs_i, obs_mask
+
+    def step(self, action):
+        self.current_machine.load_job(self.available_jobs[action], self.time_step)
+        self.current_machine.update_decision_time(self.time_step)
+        done, truncated = False, False
+        if (
+            not self.is_any_machine_need_to_decision()
+        ):  # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
+            done, truncated = self.run()
+        # reward = self.compute_single_reward(self.current_machine.id)
+        if not done and not truncated:
+            decision_machines = self.get_decsion_machines()
+            self.current_machine = decision_machines[0]
+            self.available_jobs = self.get_available_jobs()
+            obs_i, obs_mask = self.get_obs_i()
+        else:
+            obs_i = [[0 for _ in range(self.obs_dim)] for _ in range(self.obs_len)]
+            obs_mask = [True for _ in range(self.obs_len)]
+            obs_mask[0] = False
+        global_state, state_mask = self.get_global_state()
+        if done:
             reward = 0
-        if action == len(act_jobs)-1:         #机器选择空闲,对环境不产生影响
+            self.rewards =[
+                self.compute_single_reward(
+                    i + 1
+                ) * 10
+                for i in range(self.machine_num)
+            ]
+        else:
+            reward = 0
+        utilization = self.compute_UR() [self.current_machine.id-1]
+        # [self.reward_calculator.update_machine_utilization(self.current_machine.id-1, u,timestamp=self.time_step) for u in utilization]
+        self.reward_calculator.update_machine_utilization(self.current_machine.id-1, utilization, timestamp=self.time_step)
+        # if done:
+        #     reward = 0
+        #     self.rewards = [self.reward_calculator.calculate_machine_reward(i,self.time_step) for i,u in enumerate(utilization)]
+        #     self.rewards = [x[0] for x in self.rewards]
+        reward,_ = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
+        return obs_i, obs_mask, global_state, state_mask, reward, done, truncated
+
+    def step_by_sr(self, action):
+        if action is None:
             pass
         else:
-            # machine load job
-            act_jobs[action].load_to_machine(idle_machine.id)
-            idle_machine.load_job(act_jobs[action].id,act_jobs[action].get_t_process(idle_machine.id),act_jobs[action].progress)
-            # 节点转移
-            self._idle_agents.disengage_node(idle_machine)
-            self._busy_agents.append(idle_machine)
 
-            self._pending_jobs.disengage_node(act_jobs[action])
-            self.in_progress_jobs.append(act_jobs[action])
-            # 统计数据绘图
-            self._draw_data[act_jobs[action].id-1].append([idle_machine.id,self._time_step,self._time_step])
-        next_idle_agent = idle_machine.next
+            self.current_machine.load_job(action, self.time_step)
+        self.current_machine.update_decision_time(self.time_step)
+        done, truncated = False, False
+        if (
+            not self.is_any_machine_need_to_decision()
+        ):  # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
+            done, truncated = self.run()
+        if not done and not truncated:
+            decision_machines = self.get_decsion_machines()
+            self.current_machine = decision_machines[0]
+            self.available_jobs = self.get_available_jobs()
+        return 0, done, truncated
 
-        # 逻辑待优化
-        while next_idle_agent: #遍历idle_agent link,找到第一个动作不为空的agent
-            next_act_jobs,_ = self.get_agent_actions(next_idle_agent.id)
-            if len(next_act_jobs)>0:
-                break
-            next_idle_agent = next_idle_agent.next
+    def is_any_machine_need_to_decision(self):
+        for machine in self.machines:
+            if machine.is_idle() and self.is_decision_machine(machine):
+                return True
+        return False
 
-        if next_idle_agent:
-            n_s_p_j = []
-            n_s_p_m  = [next_idle_agent.bin_code]
-            for aj in next_act_jobs:
-                n_s_p_j.append(aj.get_job_state())
-            n_s_o_j = []
-            on_job = self._in_progress_jobs.head
-            while on_job:
-                n_s_o_j.append(on_job.get_job_state())
-                on_job = on_job.next
-        else: # 后续没有空闲机器，则调用run_a_time_step()直到出现idle
-            while True:
-                n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,done = self.run_a_time_step()
-                if (next_idle_agent and len(next_act_jobs)>0) or done:
-                    break
-        return n_s_p_m,n_s_p_j,n_s_o_j,next_idle_agent,next_act_jobs,reward,done
-    
-    def reward_func_0(self,action,act_jobs,machine_id):
+    def compute_single_reward1(self, job, makespans_copy, lamda_1=1, lamda_2=1):
         """
-            correlation coefficient: -0.6032
+        计算单个agent的reward
         """
-        reward:float = 0
-        if len(act_jobs) == 1: # 仅存在一个空闲动作, 
-            reward = -math.log(self.time_step+1)
+        utiliaction_rates = [
+            agent.get_utilization_rate(self.time_step) for agent in self.machines
+        ]
+        machine = self.current_machine
+        index = machine.id - 1
+        if job is None:
+            u_i = utiliaction_rates[machine.id - 1]
         else:
-            if action == len(act_jobs)-1: # 智能体选择空闲动作
-                avg_t = 0
-                for job in act_jobs[0:-1]:
-                    avg_t += job.get_t_process(machine_id)
-                avg_t = avg_t/(len(act_jobs)-1)
-                reward = -math.log(avg_t+1)
-            else:
-                reward = -math.log(act_jobs[action].get_t_process(machine_id))
+            u_i = (machine.busy_time + job.get_t_process(machine.id)) / (
+                self.time_step + job.get_t_process(machine.id)
+            )
+        utiliaction_rates[index] = u_i
+
+        u_mean = np.mean(utiliaction_rates) + 1e-6
+        t_process = 0 if job is None else job.get_t_process(machine.id)
+        s_i = makespans_copy[index] + t_process
+        s_max = np.max(makespans_copy)
+        reward_1 = s_max - s_i
+        reward_2 = np.abs(u_mean - u_i)
+        return lamda_1 * reward_1 - lamda_2 * reward_2
+
+    def compute_single_reward(self, machine_id):
+        """
+        计算单个agent的reward
+        """
+        # utiliaction_rates = [
+        #     agent.get_utilization_rate(self.time_step) for agent in self.machines
+        # ]
+        # machine = self.machines[machine_id - 1]
+        # index = machine.id - 1
+        # u_i = utiliaction_rates[machine.id - 1]
+        # utiliaction_rates[index] = u_i
+
+        # u_mean = np.mean(utiliaction_rates) + 1e-6
+        # t_process = 0 if machine.job is None else machine.job.get_t_process(machine.id)
+
+        # # reward = -np.abs(u_i - u_mean) / u_mean
+        # reward = -(np.max(utiliaction_rates) - np.min(utiliaction_rates))
+        return self.reward_function(machine_id)
+
+    def compute_UR(self):
+        utiliaction_rates = [
+            agent.get_utilization_rate(self.time_step) for agent in self.machines
+        ]
+        return utiliaction_rates
+
+    def compute_idle_time(self):
+        idle_times = [agent.get_idle_time(self.time_step) for agent in self.machines]
+        return idle_times
+
+    def reward_function(
+        self,agent_id
+    ):
+        # 负载均衡惩罚项
+        balance_penalty = self.calc_load_balance_penalty()
+
+        # 利用率熵
+        utilization_entropy = self.calc_utilization_entropy()
+
+        # 资源利用动态调整
+        # resource_efficiency = self.calc_resource_efficiency()
+        ur = self.compute_UR()
+        ur_i = ur[agent_id-1]
+        ur_mean = np.mean(ur)
+        ur_reward =  ur_i - ur_mean if ur_i<ur_mean else 0
+        ur_reward = ur_reward / ur_mean if ur_mean > 0 else 0
+        # 组合奖励
+        reward = -balance_penalty + utilization_entropy + ur_reward
         return reward
-    
-    def reward_func_1(self,action,act_jobs,machine_id):
-        """
-             correlation coefficient:  0.70220
-        """
-        reward:float = 0
-        if len(act_jobs) == 1: 
-            reward = 0 # ???0.5 or 1???
-        else:
-            if action == len(act_jobs)-1:
-                reward = 0    
-            else:
-                est = act_jobs[action].earliest_start_time #实际最早开始时间
 
-                eet = act_jobs[action].get_earliest_end_time() # 理论最早结束时间
+    def calc_load_balance_penalty(self):
+        utilization_rates = self.compute_UR()
 
-                tp = act_jobs[action].get_t_process(machine_id) # 实际需要加工的时间
+        # 最大最小利用率差异
+        load_imbalance = np.max(utilization_rates) - np.min(utilization_rates)
 
-                at = self._time_step + tp #实际加工结束的时间
-                reward = tp/(at-est)
-        return reward
-        
-    
-    def reward_func_2(self,action,act_jobs,machine_id):
-        """
-            1: correlation coefficient:  0.29470
-            2: correlation coefficient:  -0.87688
-        """
-        reward:float = 0
-        if len(act_jobs) == 1:
-            reward = 0
-        else:
-            if action == len(act_jobs)-1:
-                reward  = 0
-            else:
-                job = act_jobs[action]
-                est = job.pest[job.progress-1] # 理论全局最早开始时间
-                eet = job.pest[job.progress]   # 理论全局最早结束时间
-                tp = job.get_t_process(machine_id) #实际需要加工的时间
-                at  = self._time_step + tp         #实际加工完成的时间
+          # 利用率方差
+        utilization_variance = np.var(utilization_rates)
+        return (load_imbalance + utilization_variance)/ np.mean(utilization_rates) if np.mean(utilization_rates) > 0 else 0
 
-                reward = -(at-est)/tp
-        #print('reward:',reward)
-        return reward
-    @property
-    def action_space(self):
-        return self._action_space
-    @property
-    def agents_num(self):
-        return self._agents_num
-    @property
-    def jobs_num(self):
-        return self._jobs_num
-    @property
-    def completed_jobs(self):
-        return self._completed_jobs
-    @property
-    def pending_jobs(self):
-        return self._pending_jobs
-    @property
-    def in_progress_jobs(self):
-        return self._in_progress_jobs
-    @property
-    def faulty_agents(self):
-        return self._faulty_agents
-    @property
-    def idle_agents(self):
-        return self._idle_agents
-    @property
-    def busy_agents(self):
-        return self._busy_agents
-    @property
-    def draw_data(self):
-        return self._draw_data
-    @property
-    def time_step(self):
-        return self._time_step
-    @time_step.setter
-    def time_step(self, time_step):
-        self._time_step = time_step
+    def calc_utilization_entropy(self):
+        utilization_rates = self.compute_UR()
+        total_utilization = np.sum(utilization_rates)
+
+        # 避免除零
+        probabilities = utilization_rates / (total_utilization + 1e-8)
+
+        # 计算熵
+        entropy = -np.sum(probabilities * np.log(probabilities + 1e-8))
+        normalized_entropy = entropy / np.log(len(utilization_rates))
+        return normalized_entropy

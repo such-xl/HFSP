@@ -1,7 +1,24 @@
 # HFSP
 Hybird flow shop scheduling problems
-
+# new new 
 # issue
-在env.run_a_time_step function中，按busy_agent_list和in_progress_jobs_list的顺序依次执行各自的run_a_time_step()
 理论上agent与其对应的job在各自链表中的位置是一致的，但这种处理方式缺乏agent异常处理。后续如果有需要应该补齐，
-还有就是agent和job的执行不太直观，后续考虑在machine类中添加一个变量指向它正在处理的job,在其run_a_time_step()中调用job的run_a_time_step(),删去其job_id类变量。
+# new branch marl_fjsp
+完善多智能体强化学习
+
+今日任务：2025/02/20 
+状态代码的实现 √
+环境逻辑调通  √
+
+
+今日任务：2025/02/21
+网络和训练代码实现(独立D3QN,网络共享) √
+开始训练    √
+
+今日任务：2025/02/22
+尝试增量的奖励设定 √
+尝试增加或替换不同的基础调度规则 ×
+尝试使用连续动作空间 ×
+
+今日任务：2025/02/23
+尝试使用连续动作空间 
