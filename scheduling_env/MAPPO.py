@@ -162,6 +162,9 @@ class MAPPOAgent:
             reward_tensor, values, next_values, done_tensor
         )
 
+        # 将优势和回报转换为张量
+        advantages_tensor = torch.FloatTensor(advantages).to(self.device)
+        returns_tensor = torch.FloatTensor(returns).to(self.device)
 
         # 标准化优势
         advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (
@@ -337,7 +340,7 @@ class AsyncMAPPO:
 
         for buffer in self.buffers:
             actor_loss, critic_loss, entropy = self.agents.update(
-                buffer, batch_size, epochs,tau,hard
+                buffer, batch_size, epochs
             )
             total_actor_loss += actor_loss
             total_critic_loss += critic_loss

@@ -117,7 +117,7 @@ class TrainingEnv:
             machine for machine in self.machines if self.is_decision_machine(machine)
         ]
 
-        np.random.shuffle(decision_machines)
+        # np.random.shuffle(decision_machines)
         return decision_machines  # 打乱顺序，模拟异步决策
 
     def get_available_jobs(self):
