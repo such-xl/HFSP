@@ -31,22 +31,31 @@ class Job(Node):
         self._wait_time = 0  # 作业等待时间
         self._tard_time = 0
 
-    def get_state_code(self):
+    def get_state_code(self,time_step):
         """
         获取job的状态编码 [job_id,状态[0,1,2],当前工序,当前工序的机器id,当前工序剩余加工时间,剩余工序数]
         """
+        # return [
+        #     # self._type,
+        #     0,
+        #     self._status.value,
+        #     self._progress,
+        #     0 if self._machine is None else self._machine.id,
+        #     (
+        #         0
+        #         if self._status == JobStatus.COMPLETED
+        #         else self.current_progress_remaining_time()
+        #     ),
+        #     self._process_num - self._progress,
+        # ]
+        remaining_time = self.get_remaining_avg_time()
         return [
-            # self._type,
+            self.status.value-1,
+            self._progress/self._process_num,
+            self._process_time/(time_step-self._insert_time+1e-6),
+            remaining_time/(self._due_time-time_step+1e-6) if abs(self._due_time -time_step) >= remaining_time else 0,
+            0, 
             0,
-            self._status.value,
-            self._progress,
-            0 if self._machine is None else self._machine.id,
-            (
-                0
-                if self._status == JobStatus.COMPLETED
-                else self.current_progress_remaining_time()
-            ),
-            self._process_num - self._progress,
         ]
 
     def get_t_process(self, machine_id):

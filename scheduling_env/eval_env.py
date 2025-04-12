@@ -74,6 +74,7 @@ class FJSEvalEnv:
             machine_action: 决策机器的状态
         """
         self.time_step, self.job_num = 0, 0
+        self.pre_ur_mean = 1
         self.idle_action = 0
         self.machines = [Machine(i) for i in range(1, self.machine_num + 1)]
         self.uncomplete_job = JobList()
@@ -131,20 +132,43 @@ class FJSEvalEnv:
         ):  # 没有结束且没有空闲机器，继续
             done, truncated = self.run()
         return done, truncated
+    def get_randed_avi_jobs(self,ranked_lists):
+        seen_ids = set()
+        result = []
+        pointers = [0] * len(ranked_lists)  # 每个列表的当前索引
 
+        while len(result) < self.action_dim:
+            no_more_candidates = True
+            for i, ranked in enumerate(ranked_lists):
+                while pointers[i] < len(ranked):
+                    job = ranked[pointers[i]]
+                    pointers[i] += 1
+                    if id(job) not in seen_ids:
+                        result.append(job)
+                        seen_ids.add(id(job))
+                        no_more_candidates = False
+                        break  # 当前规则找到一个就换下一个
+            if no_more_candidates:
+                break  # 所有规则都没新作业了，结束
+        return result
     def get_obs_i(self):
         """
         获取machine i 的 obs
         如果可用作业大于5，则用调度规则选取的作业信息作为state
         否则
         """
-        update_avi_jobs = [
-            CR(self.available_jobs,self.time_step),
-            EDD(self.available_jobs),
-            MS(self.available_jobs,self.time_step),
-            SRO(self.available_jobs, self.time_step),
-        ]
-        obs_i = [job.get_state_code() for job in update_avi_jobs]
+        ranked_job0 = EDD(self.available_jobs)
+        ranked_job1 = CR(self.available_jobs, self.time_step)
+        ranked_job2 = SRO(self.available_jobs, self.time_step)
+        ranked_job3 = MS(self.available_jobs, self.time_step)
+        update_avi_jobs = self.get_randed_avi_jobs([ranked_job0,ranked_job1,ranked_job2,ranked_job3])
+        # update_avi_jobs = [
+        #     EDD(self.available_jobs),
+        #     CR(self.available_jobs,self.time_step),
+        #     SRO(self.available_jobs, self.time_step),
+        #     MS(self.available_jobs,self.time_step),
+        # ]
+        obs_i = [job.get_state_code(self.time_step) for job in update_avi_jobs]
         self.available_jobs = update_avi_jobs
 
         obs_mask = [False if i < len(obs_i) else True for i in range(self.obs_len)]
@@ -153,11 +177,11 @@ class FJSEvalEnv:
             obs_i.append([0 for _ in range(self.obs_dim)])
         obs_i.append(
             [
-                self.current_machine.id,
+                self.current_machine.id / 10,
                 self.current_machine.get_utilization_rate(self.time_step),
                 np.mean(self.compute_UR()),
                 np.std(self.compute_UR()),
-                np.log(self.time_step) if self.time_step > 1 else 0,
+                self.pre_ur_mean,
                 0,
             ]
         )

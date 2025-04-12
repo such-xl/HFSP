@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 import json
-
+import time
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.MAPPO import AsyncMAPPO
 
@@ -43,6 +43,7 @@ def train_async_mappo(
         current_temp = temp_scheduler.step()
         obs_i, obs_mask, global_state = env.reset()
         done, truncated = False, False
+        action_count = [0 for _ in range(env.action_dim)]
         while not done and not truncated:
             action, log_prob, _ = mappo.select_action(
                 obs_i,
@@ -50,6 +51,7 @@ def train_async_mappo(
                 tau=current_temp,
                 hard=(current_temp < 0.5),
             )
+            action_count[action] += 1
             (
                 next_obs_i,
                 next_obs_mask,
@@ -58,8 +60,6 @@ def train_async_mappo(
                 done,
                 truncated,
             ) = env.step(action)
-
-            # print(f"actino:{action} reward:{reward}")
             G[f"agent_{env.current_machine.id}"] += reward 
             mappo.store_experience(
                 obs_i,
@@ -77,6 +77,7 @@ def train_async_mappo(
             obs_i = next_obs_i
             obs_mask = next_obs_mask
             global_state = next_global_state
+        
         # mappo.update_last_reward(env.rewards)
         # for i,r in enumerate(env.rewards):
         #     G[f"agent_{i+1}"] += r
@@ -93,7 +94,7 @@ def train_async_mappo(
         )
 
         record["makespan"].append(env.time_step)
-        actor_loss, critic_loss, entropy = mappo.update(batch_size, epochs,tau=current_temp,
+        actor_loss, critic_loss, entropy, kl_div = mappo.update(batch_size, epochs,tau=current_temp,
                 hard=(current_temp < 0.5),)
         record["actor_loss"].append(actor_loss)
         record["critic_loss"].append(critic_loss)
@@ -107,7 +108,7 @@ def train_async_mappo(
         print(action)
         
         print(
-            f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  entropy:{entropy:.4f}, tard_sum:{tard_sum}"
+            f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f},KL {kl_div:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  entropy:{entropy:.4f}, tard_sum:{tard_sum} action_count:{action_count},no_repete:{env.count_actions}"
         )
     with open(f"result/record_{output_path}_rl.json", "w") as f:
         json.dump(record, f)
@@ -129,13 +130,13 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
         G = {}
         for i in range(1, env.machine_num + 1):
             G[f"agent_{i}"] = 0
-        _, _, _, _ = env.reset()
+        _, _, _ = env.reset()
         done, truncated = False, False
         while not done and not truncated:
             # action = (env.available_jobs, env.current_machine, env.compute_UR())
             # action1 = CR(env.available_jobs, env.time_step)
-            action = noname_2(env.available_jobs, env.current_machine, env.compute_UR())
-            # action2 = EDD(env.available_jobs)
+            # action = noname_2(env.available_jobs, env.current_machine, env.compute_UR())
+            action = EDD(env.available_jobs)[0]
             # action3 = MS(env.available_jobs,env.time_step)
             # action4 = SRO(env.available_jobs,env.time_step)
             # action = np.random.choice([action1,action2,action3,action4])
@@ -146,7 +147,7 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
             record["reward"][f"agent_{machine.id}"].append(G[f"agent_{machine.id}"])
             for machine in env.machines
         )
-
+        # print([(x[0]["type"],x[1]) for x in env.job_arrivals])
         list(
             record["utilization_rate"][f"agent_{machine.id}"].append(
                 machine.get_utilization_rate(env.time_step)
@@ -167,25 +168,25 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
 
 
 PARAMS = {
-    "num_episodes": 800,
+    "num_episodes":800,
     "batch_size": 12,
-    "actor_lr": 3e-5,
+    "actor_lr": 3e-3,
     "critic_lr": 3e-4,
-    "gamma": 0.99,
+    "gamma": 0.98,
     "obs_dim": 6,
     "obs_len": 5,
     "global_state_dim": 6,
     "global_state_len": 48,
     "action_dim": 4,
     "max_machine_num": 10,
-    "max_job_num": 300,
+    "max_job_num": 100,
     "share_parameters": False,
     "num_heads": 6,
     "device": (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     ),
     "data_path": os.path.dirname(os.path.abspath(__file__))
-    + "/experiment/jsp/job_data/",
+    + "/experiment/fjsp/",
     "job_name": "record.json",
     "train": False,
     "idle_action": False,
@@ -201,14 +202,14 @@ if __name__ == "__main__":
     5. 加工时间相同，cfjsp
     """
     task_type = {
-        "jsp": "jsp.json",
+        # "jsp": "jsp.json",
         # "fjsp_diff": "fjsp_diff.json",
-        # "fjsp_same": "fjsp_same.json",
+        "fjsp_same": "fjsp_same.json",
         # "cfjsp_diff": "cfjsp_diff.json",
         # "cfjsp_same": "cfjsp_same.json",
     }
     for k, v in task_type.items():
-        # PARAMS["job_name"] = v
+        PARAMS["job_name"] = v
         # if not PARAMS["idle_action"]:
         #     PARAMS["action_dim"] = PARAMS["action_dim"] - 1
         env = TrainingEnv(
@@ -232,7 +233,7 @@ if __name__ == "__main__":
             gamma=PARAMS["gamma"],
             num_heads=PARAMS["num_heads"],
             device=PARAMS["device"],
-            model_save_path=PARAMS["model_path"]+k+".pth",
+            model_save_path=PARAMS["model_path"]+"fjsp_same.pth",
         )
         train_async_mappo(
             env=env,
@@ -242,6 +243,7 @@ if __name__ == "__main__":
             epochs=10,
             output_path=k,
         )
+
         env_sr = TrainingEnv(
             obs_dim=PARAMS["obs_dim"],
             obs_len=PARAMS["obs_len"],

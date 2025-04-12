@@ -67,56 +67,67 @@ class PPONetwork(nn.Module):
 
 
 # 定义Actor网络 - 策略网络
-class ActorNetwork(PPONetwork):
+class ActorNetwork(nn.Module):
     def __init__(self, input_dim, output_dim, num_heads=4, dropout_rate=0.1):
         super(ActorNetwork, self).__init__()
-        self.state_embedding = nn.Linear(input_dim, 2 * input_dim)
-        self.attention = nn.MultiheadAttention(
-            2 * input_dim, num_heads=num_heads, batch_first=True, dropout=dropout_rate
-        )
         self.mlp = nn.Sequential(
+            nn.Linear(6,64),
+            nn.LeakyReLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(64, 128),  # 输出单个值
+            nn.LeakyReLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(128, 1),
             nn.Flatten(),
-            nn.Linear(10 * input_dim, 6 * input_dim),
-            nn.LeakyReLU(),
-            nn.Dropout(dropout_rate),
-            # nn.BatchNorm1d(6 * input_dim),
-            nn.Linear(6 * input_dim, 3 * input_dim),  # 输出单个值
-            nn.LeakyReLU(),
-            nn.Dropout(dropout_rate),
-            # nn.BatchNorm1d(3 * input_dim),
-            nn.Linear(3 * input_dim,3 * input_dim),
-            nn.LeakyReLU(),
-            nn.Dropout(dropout_rate),
-            # nn.BatchNorm1d(3 * input_dim),
+            nn.Linear(5, output_dim)
+            # nn.Softmax(dim=-1)
         )
-        self.final_layer = nn.Linear(3 * input_dim, output_dim)
-        self.norm_after_embedding = nn.LayerNorm(2 * input_dim)
-        self.norm_after_attention = nn.LayerNorm(2 * input_dim)
-        self.positional_encoding = PositionalEncoding(2 * input_dim)
-        nn.init.zeros_(self.final_layer.bias)
-        # self.apply(self.init_weights)
     def forward(self, x, mask=None):
-        x = self.state_embedding(x)
-        x = self.positional_encoding(x)
-        x = self.norm_after_embedding(x)
-        x = self.attention(x, x, x, key_padding_mask=mask)[0]
-        x = self.norm_after_attention(x)
         x = self.mlp(x)
-        x = self.final_layer(x)
-        # mask_new = mask.clone().detach()
-        # mask_new[:,-2] = True
-        # x = x.masked_fill(mask[:,:-1], -1e9)  # 过滤无效动作
-        return x
+        logits = x.masked_fill(mask[:,:-1], float("-inf"))
+        assert not torch.isnan(logits).any(), "logits 有 NaN！"
 
-    def get_action(self, state, mask, tau=1.0, hard=False, eval_mode=False):
+
+        return logits
+    def normalize_masked_probs(self, probs, mask):
+        """将概率分布重新归一化，只考虑有效动作
+        mask: True代表无效/填充动作"""
+        # 创建有效动作掩码 (取反，使得True代表有效)
+        valid_mask = ~mask
+        # 确保无效动作概率为0
+        masked_probs = probs * valid_mask.float()
+        # 计算有效动作概率和
+        valid_probs_sum = masked_probs.sum(dim=-1, keepdim=True)
+        # 重新归一化
+        normalized_probs = masked_probs / (valid_probs_sum + 1e-10)
+        # 确保无效动作概率为0
+        normalized_probs = normalized_probs * valid_mask.float()
+        return normalized_probs
+    def masked_entropy(self, probs, mask):
+        """只计算有效动作的熵
+        mask: True代表无效/填充动作"""
+        # 创建有效动作掩码
+        valid_mask = ~mask
+        # 确保无效动作概率为0
+        masked_probs = probs * valid_mask.float()
+        # 避免log(0)出现的问题
+        log_probs = torch.log(masked_probs + 1e-10)
+        # 只计算有效动作的熵
+        entropy = -torch.sum(masked_probs * log_probs, dim=-1)
+        # 根据有效动作数量进行归一化
+        valid_actions = valid_mask.float().sum(dim=-1)
+        normalized_entropy = entropy / torch.clamp(valid_actions, min=1.0)
+        return normalized_entropy
+    def get_action(self, state, mask=None, tau=1.0, hard=False, eval_mode=False):
         logits = self.forward(state, mask)
-        # # 如果提供了可用动作掩码，则应用它
         if eval_mode:
             # Deterministic action selection during evaluation
             action = logits.argmax(dim=-1)
             y_out = F.softmax(logits, dim=-1)
+            y_out = self.normalize_masked_probs(y_out, mask[:,:-1])
             dist = Categorical(y_out)
-            return action.item(),dist.entropy(),dist.entropy()
+            entropy = self.masked_entropy(y_out, mask)
+            return action.item(),entropy,entropy
         if hard:
             # 硬Gumbel-Softmax实现
             gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
@@ -124,33 +135,41 @@ class ActorNetwork(PPONetwork):
             index = gumbel_logits.argmax(dim=-1)
             y_hard = torch.zeros_like(logits).scatter_(-1, index.unsqueeze(-1), 1.0)
             y = F.softmax(gumbel_logits, dim=-1)
+            y = self.normalize_masked_probs(y, mask[:,:-1])
             y_out = y_hard - y.detach() + y
             dist = Categorical(y_out)
             log_prob = dist.log_prob(index)
-            return index.item(), log_prob, dist.entropy()
+            entropy = self.masked_entropy(y_out, mask[:,:-1])
+
+            return index.item(), log_prob, entropy
         else:
             # 软Gumbel-Softmax实现
             gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
             y_out = F.softmax((logits + gumbels) / tau, dim=-1)
+            y_out = self.normalize_masked_probs(y_out, mask[:,:-1])
             dist = Categorical(y_out)
             action = dist.sample()
             log_prob = dist.log_prob(action)
-
-            return action.item(), log_prob, dist.entropy()
-        ...
+            entropy = self.masked_entropy(y_out, mask[:, :-1])
+            return action.item(), log_prob, entropy
 
 # Critic网络
 class CriticNetwork(nn.Module):
     def __init__(self,input_dim,droput_rate=0.1):
         super(CriticNetwork, self).__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(1 * input_dim, 4 * input_dim),
-            nn.BatchNorm1d(4 * input_dim),
+            nn.Linear(1 * input_dim,128),
+            nn.BatchNorm1d(128),
             nn.LeakyReLU(),
             nn.Dropout(droput_rate),
-            nn.Linear(4 * input_dim, 8 * input_dim),
+            nn.Linear(128, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(),
             nn.Dropout(droput_rate),
-            nn.Linear(8 * input_dim, 1),
+            nn.Linear(256, 512),
+            nn.LeakyReLU(),
+            nn.Dropout(droput_rate),
+            nn.Linear(512, 1),
         )
     def forward(self, x):
         return self.mlp(x)

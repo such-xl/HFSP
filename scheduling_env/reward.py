@@ -3,7 +3,7 @@ import time
 from collections import deque
 
 class AsyncMachineUtilizationReward:
-    def __init__(self, num_machines, w1=1.0, w2=0.5, safety_threshold=0.9, 
+    def __init__(self, num_machines, w1=1, w2=0, safety_threshold=0.9, 
                  history_length=600, decay_factor=0.95):
         """
         初始化异步奖励函数计算器（无锁版本）
@@ -49,19 +49,18 @@ class AsyncMachineUtilizationReward:
         timestamp (float, 可选): 时间戳，默认为当前时间
         """
         if timestamp is None:
-            timestamp = time.time()
+            raise ValueError("timestamp is None")
         
         self.machine_history[machine_id]['utilization'].append(utilization)
         self.machine_history[machine_id]['timestamp'].append(timestamp)
     
-    def update_system_state(self, force=False):
+    def update_system_state(self,current_time, force=False):
         """
         更新系统状态（平均利用率和标准差）
         
         参数:
         force (bool): 是否强制更新，默认为False
         """
-        current_time = time.time()
         
         # 如果距离上次更新时间过短且不强制更新，则跳过
         if not force and current_time - self.last_system_update < 0.5:  # 1秒的最小更新间隔
@@ -100,7 +99,6 @@ class AsyncMachineUtilizationReward:
         """
         if current_time is None:
             raise("current_time is None")
-            current_time = time.time()
         
         history = self.machine_history[machine_id]
         if not history['utilization']:
@@ -132,7 +130,6 @@ class AsyncMachineUtilizationReward:
         """
         if current_time is None:
             raise("current_time is None")
-            current_time = time.time()
         
         # 确保系统状态是最新的
         self.update_system_state(current_time)
@@ -158,7 +155,7 @@ class AsyncMachineUtilizationReward:
         
         
         # 总奖励
-        total_reward = (0.2 * local_reward + 0.8 * global_reward -0.5)
+        total_reward = (0.01 * local_reward + 0.8 * global_reward - 0.5)
         
         # 返回奖励和详细分解
         reward_details = {
@@ -184,10 +181,10 @@ class AsyncMachineUtilizationReward:
         dict: 详细奖励分解
         """
         if current_time is None:
-            current_time = time.time()
+            raise ValueError("current_time is None")
         
         # 确保系统状态是最新的
-        self.update_system_state(force=True)
+        self.update_system_state(current_time,force=True)
         
         # 如果系统历史记录为空，则无法计算奖励
         if not self.system_history['mean_utilization']:

@@ -35,7 +35,7 @@ class MAPPOAgent:
         gamma=0.99,
         eps_clip=0.2,
         value_coef=0.5,
-        entropy_coef=0.01,
+        entropy_coef=0.001,
         gae_lambda=0.95,
         num_heads=5,
         device=torch.device("cpu"),
@@ -67,14 +67,12 @@ class MAPPOAgent:
         self.old_actor.load_state_dict(self.actor.state_dict())
 
     def select_action(self, obs, obs_mask, tau, hard,eval_mode=False):
-        obs_tensor = torch.FloatTensor(obs).to(self.device).unsqueeze(0)
-        obs_mask = torch.BoolTensor(obs_mask).to(self.device).unsqueeze(0)
-
+        obs_tensor = torch.as_tensor(obs,dtype=torch.float32).to(self.device).unsqueeze(0)
+        obs_mask_tensor = torch.as_tensor(obs_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
         with torch.no_grad():
             action, log_prob, entropy = self.actor.get_action(
-                obs_tensor, obs_mask, tau, hard,eval_mode=eval_mode
+                obs_tensor, obs_mask_tensor, tau, hard,eval_mode=eval_mode
             )
-
         return action, log_prob.cpu().numpy(), entropy.cpu().numpy()
 
     def evaluate_state(self, global_state):
@@ -114,6 +112,59 @@ class MAPPOAgent:
         self.old_actor.load_state_dict(self.actor.state_dict())
     def update_last_reward(self,reward,buffer):
         buffer.update_last_reward(reward)
+    # 添加2. 动作概率重整化函数
+    def normalize_masked_probs(self, probs, mask):
+        """将概率分布重新归一化，只考虑有效动作
+        mask: True代表无效/填充动作"""
+        # 创建有效动作掩码 (取反，使得True代表有效)
+        valid_mask = ~mask
+        # 确保无效动作概率为0
+        masked_probs = probs * valid_mask.float()
+        # 计算有效动作概率和
+        valid_probs_sum = masked_probs.sum(dim=-1, keepdim=True)
+        # 重新归一化
+        normalized_probs = masked_probs / (valid_probs_sum + 1e-10)
+        # 确保无效动作概率为0
+        normalized_probs = normalized_probs * valid_mask.float()
+        return normalized_probs
+    def masked_entropy(self, probs, mask):
+        """只计算有效动作的熵
+        mask: True代表无效/填充动作"""
+        # 创建有效动作掩码
+        valid_mask = ~mask
+        # 确保无效动作概率为0
+        masked_probs = probs * valid_mask.float()
+        # 避免log(0)出现的问题
+        log_probs = torch.log(masked_probs + 1e-10)
+        # 只计算有效动作的熵
+        entropy = -torch.sum(masked_probs * log_probs, dim=-1)
+        # 根据有效动作数量进行归一化
+        valid_actions = valid_mask.float().sum(dim=-1)
+        normalized_entropy = entropy / torch.clamp(valid_actions, min=1.0)
+        return normalized_entropy
+    # 添加6. 特殊处理 KL 散度函数
+    def masked_kl_divergence(self, new_probs, old_probs, mask):
+        """计算有效动作空间上的KL散度
+        mask: True代表无效/填充动作"""
+        # 创建有效动作掩码
+        valid_mask = ~mask
+        # 只计算有效动作的KL散度
+        masked_new_probs = new_probs * valid_mask.float()
+        masked_old_probs = old_probs * valid_mask.float()
+        
+        # 避免除零和log(0)问题
+        eps = 1e-10
+        ratio = torch.clamp(masked_new_probs / (masked_old_probs + eps), min=eps)
+        
+        # 计算KL散度 (只在有效动作上)
+        kl = masked_new_probs * torch.log(ratio)
+        kl = torch.sum(kl, dim=-1)
+        
+        # 根据有效动作数量归一化
+        valid_actions = valid_mask.float().sum(dim=-1)
+        normalized_kl = kl / torch.clamp(valid_actions, min=1.0)
+        
+        return normalized_kl
     def compute_advantages(self, rewards, values, next_values, dones):
         advantages = torch.zeros_like(rewards, dtype=torch.float32,device=self.device)
         returns = torch.zeros_like(rewards, dtype=torch.float32,device=self.device)
@@ -129,7 +180,46 @@ class MAPPOAgent:
             advantages[t] = gae
             returns[t] = advantages[t] + values[t]
         return advantages, returns
+    # 添加7. 动态调整裁剪参数函数
+    def adaptive_ppo_clip(self, mask, base_clip=0.2, min_clip=0.1, max_clip=0.3):
+        """根据有效动作数量动态调整PPO裁剪参数
+        mask: True代表无效/填充动作"""
+        # 创建有效动作掩码
+        valid_mask = ~mask
+        # 根据有效动作数量调整裁剪参数
+        action_space_size = mask.size(-1)
+        valid_action_count = valid_mask.float().sum(dim=-1)
+        
+        # 有效动作比例
+        valid_ratio = valid_action_count / action_space_size
+        
+        # 根据有效动作比例调整裁剪参数
+        # 有效动作越少，裁剪参数越小，限制更严格
+        clip_param = self.eps_clip * (0.5 + 0.5 * valid_ratio)
+        clip_param = torch.clamp(clip_param, min_clip, max_clip)
+        
+        return clip_param
+    
+    # 添加8. 动态调整学习率函数
+    def adaptive_learning_rate(self, mask, base_lr=3e-4, min_lr=1e-5, max_lr=3e-3):
+        """根据有效动作数量动态调整学习率
+        mask: True代表无效/填充动作"""
+        # 创建有效动作掩码
+        valid_mask = ~mask
+        # 根据有效动作数量调整学习率
+        action_space_size = mask.size(-1)
+        valid_action_count = valid_mask.float().sum(dim=-1)
 
+        # 有效动作比例
+        valid_ratio = valid_action_count / action_space_size
+
+        # 根据有效动作比例调整学习率
+        # 有效动作越多，学习率越高，训练更加稳定
+        lr = base_lr * (0.5 + 0.5 * valid_ratio)
+        lr = torch.clamp(lr, min_lr, max_lr)
+
+        return lr
+    
     def update(self, buffer, batch_size=8, epochs=10,tau=0.1,hard=False):
         if len(buffer) < batch_size:
             return 0, 0, 0  # 如果没有足够的样本，则不更新
@@ -161,10 +251,8 @@ class MAPPOAgent:
         advantages_tensor, returns_tensor = self.compute_advantages(
             reward_tensor, values, next_values, done_tensor
         )
-
+        returns_tensor = (returns_tensor - returns_tensor.mean()) / (returns_tensor.std() + 1e-8)
         # 将优势和回报转换为张量
-        advantages_tensor = torch.FloatTensor(advantages).to(self.device)
-        returns_tensor = torch.FloatTensor(returns).to(self.device)
 
         # 标准化优势
         advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (
@@ -175,7 +263,7 @@ class MAPPOAgent:
         actor_loss_epoch = 0
         critic_loss_epoch = 0
         entropy_epoch = 0
-
+        kl_div_epoch = 0
         for _ in range(epochs):
             # 随机采样小批量
             rand_idx = torch.randperm(len(batch)).to(self.device)
@@ -196,42 +284,38 @@ class MAPPOAgent:
                 batch_global_state = global_state_tensor[batch_idx]
 
                 # 计算当前策略的动作概率
-                logits = self.actor(batch_obs, batch_obs_mask)  # 获取logits
-                # # logits = logits.masked_fill(batch_obs_mask[:,:-1], float("-inf"))
-                # probs = F.softmax(logits, dim=-1)  # 显式应用softmax
-                # dist = Categorical(probs)
-                # curr_log_prob = dist.log_prob(batch_action)
-                # entropy = dist.entropy().mean()
-                # 计算当前策略的动作概率
-                            # 软或硬Gumbel-Softmax采样
-                if hard:  # 如果硬 Gumbel-Softmax
-                    gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
-                    gumbel_logits = (logits + gumbels) / tau
-                    index = gumbel_logits.argmax(dim=-1)
-                    y_hard = torch.zeros_like(logits).scatter_(-1, index.unsqueeze(-1), 1.0)
-                    y = F.softmax(gumbel_logits, dim=-1)
-                    y_out = y_hard - y.detach() + y
-                else:  # 软 Gumbel-Softmax
-                    gumbels = -torch.log(-torch.log(torch.rand_like(logits)))
-                    y_out = F.softmax((logits + gumbels) / tau, dim=-1)
+                logits = self.actor(batch_obs, batch_obs_mask)
+                logits = logits.masked_fill(batch_obs_mask[:,:-1], -1e9)
+                probs = F.softmax(logits, dim=-1)
+                assert not torch.isnan(probs).any(), "probs 有 NaN！"
+                normalized_probs = self.normalize_masked_probs(probs, batch_obs_mask[:,:-1])
 
-                            # 计算当前策略的动作概率分布
-                dist = Categorical(y_out)
-                curr_log_prob = dist.log_prob(batch_action)  # 当前采样的对数概率
-                entropy = dist.entropy().mean()  # 熵值
+                # 使用重整化后的概率创建分布
+                dist = Categorical(normalized_probs)
+                curr_log_prob = dist.log_prob(batch_action)
+
+                entropy = self.masked_entropy(normalized_probs, batch_obs_mask[:,:-1]).mean()
+
                 # 计算重要性采样比率
                 ratio = torch.exp(curr_log_prob - batch_old_log_prob)
+                adaptive_clip = self.adaptive_ppo_clip(batch_obs_mask[:,:-1])
                 # 计算裁剪的目标函数
                 surr1 = ratio * batch_advantage
                 surr2 = (
-                    torch.clamp(ratio, 1.0 - self.eps_clip, 1.0 + self.eps_clip)
+                    torch.clamp(ratio, 1.0 - adaptive_clip, 1.0 + adaptive_clip)
                     * batch_advantage
                 )
                 actor_loss = -torch.min(surr1, surr2).mean()
 
                 # 计算价值损失
                 values = self.critic(batch_global_state).squeeze(-1)
-                critic_loss = F.mse_loss(values, batch_return)
+                critic_loss = F.smooth_l1_loss(values, batch_return)
+                with torch.no_grad():
+                    old_logits = self.old_actor(batch_obs, batch_obs_mask)
+                    old_logits = old_logits.masked_fill(batch_obs_mask[:,:-1], -1e9)
+                    old_probs = F.softmax(old_logits, dim=-1)
+                    old_normalized_probs = self.normalize_masked_probs(old_probs, batch_obs_mask[:,:-1])
+                    kl_div = self.masked_kl_divergence(normalized_probs, old_normalized_probs, batch_obs_mask[:,:-1]).mean()
 
                 # 添加熵正则化
                 loss = (
@@ -253,6 +337,7 @@ class MAPPOAgent:
                 actor_loss_epoch += actor_loss.item()
                 critic_loss_epoch += critic_loss.item()
                 entropy_epoch += entropy.item()
+                kl_div_epoch += kl_div.item()
 
         # 更新旧策略
         self.update_old_policy()
@@ -266,6 +351,7 @@ class MAPPOAgent:
             actor_loss_epoch / n_updates,
             critic_loss_epoch / n_updates,
             entropy_epoch / n_updates,
+            kl_div_epoch / n_updates
         )
     def save(self):
         print(self.model_save_path)
@@ -333,23 +419,26 @@ class AsyncMAPPO:
         """为当前活动智能体选择动作"""
         return self.agents.select_action(obs, obs_mask, tau, hard,eval_mode)
 
-    def update(self, batch_size=64, epochs=100,tau=0.1,hard=False):
+    def update(self, batch_size=64, epochs=10,tau=0.1,hard=False):
         total_actor_loss = 0
         total_critic_loss = 0
         total_entropy = 0
-
+        total_kl_div = 0
         for buffer in self.buffers:
-            actor_loss, critic_loss, entropy = self.agents.update(
+            actor_loss, critic_loss, entropy,kl_div = self.agents.update(
                 buffer, batch_size, epochs
             )
             total_actor_loss += actor_loss
             total_critic_loss += critic_loss
             total_entropy += entropy
+            total_kl_div += kl_div
+            
 
         return (
             total_actor_loss / self.n_agents,
             total_critic_loss / self.n_agents,
             total_entropy / self.n_agents,
+            total_kl_div/ self.n_agents
         )
 
     def store_experience(
