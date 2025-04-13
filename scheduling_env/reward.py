@@ -3,7 +3,7 @@ import time
 from collections import deque
 
 class AsyncMachineUtilizationReward:
-    def __init__(self, num_machines, w1=1, w2=0, safety_threshold=0.9, 
+    def __init__(self, num_machines, w1=1, w2=0.2, safety_threshold=0.9, 
                  history_length=600, decay_factor=0.95):
         """
         初始化异步奖励函数计算器（无锁版本）
@@ -106,7 +106,7 @@ class AsyncMachineUtilizationReward:
         
         # 计算时间权重
         time_diffs = np.array([current_time - t for t in history['timestamp']])
-        weights = np.exp(-time_diffs / 35.0)  # 10秒的时间尺度
+        weights = np.exp(-time_diffs / 10.0)  # 10秒的时间尺度
         weights = weights / np.sum(weights)  # 归一化权重
         
         # 计算加权利用率
@@ -155,7 +155,7 @@ class AsyncMachineUtilizationReward:
         
         
         # 总奖励
-        total_reward = (0.01 * local_reward + 0.8 * global_reward - 0.5)
+        total_reward = (0.1 * local_reward + 0.9 * global_reward - 0.5)
         
         # 返回奖励和详细分解
         reward_details = {

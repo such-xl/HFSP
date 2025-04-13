@@ -31,7 +31,7 @@ class MAPPOAgent:
         global_state_dim,
         global_state_len,
         actor_lr=3e-4,
-        critic_lr=3e-4,
+        critic_lr=3e-5,
         gamma=0.99,
         eps_clip=0.2,
         value_coef=0.5,
@@ -424,9 +424,11 @@ class AsyncMAPPO:
         total_critic_loss = 0
         total_entropy = 0
         total_kl_div = 0
-        for buffer in self.buffers:
+        buffer_indices = list(range(len(self.buffers)))
+        np.random.shuffle(buffer_indices)
+        for index in buffer_indices:
             actor_loss, critic_loss, entropy,kl_div = self.agents.update(
-                buffer, batch_size, epochs
+                self.buffers[index], batch_size, epochs
             )
             total_actor_loss += actor_loss
             total_critic_loss += critic_loss

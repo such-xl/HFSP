@@ -6,8 +6,10 @@ from .machine import Machine
 from .basic_scheduling_algorithms import EDD,MS,SRO,CR
 from .reward import AsyncMachineUtilizationReward
 np.random.seed(42)
-
-
+rng_1 = np.random.default_rng(42)
+rng_2 = np.random.default_rng(42)
+rng_3 = np.random.default_rng(42)
+rng_4 = np.random.default_rng(42)
 class TrainingEnv:
     # 初始化环境
     def __init__(
@@ -19,6 +21,7 @@ class TrainingEnv:
         action_dim,
         max_job_num,
         job_file_path,
+        rng = None
     ) -> None:
         self.obs_dim = obs_dim
         self.obs_len = obs_len
@@ -27,6 +30,7 @@ class TrainingEnv:
         self.action_dim = action_dim
         self.max_job_num = max_job_num
         self.machine_num = 10
+        self.rng = rng or np.random.default_rng(42)
 
         with open(job_file_path, "r") as f:
             self.job_type = json.load(f)
@@ -57,15 +61,14 @@ class TrainingEnv:
         """
         生成指数分布的间隔时间，并取整
         """
-        print("shcne")
-        intervals = np.random.exponential(
+        intervals = self.rng.exponential(
             scale=1 / lambda_rate, size=self.max_job_num - 10
         )
         intervals = np.round(intervals).astype(int)  # 取整转换为整数
         arrival_times = np.cumsum(intervals)
         arrival_times = np.insert(arrival_times, 0, [0] * 10)
-        selected_jobs = [random.choice(self.job_type) for _ in range(self.max_job_num)]
-        arrivals = [(job, time,int(sum(sum(d.values()) / len(d) for d in job["process_list"])*np.random.uniform(2,3)+time)) for job, time in zip(selected_jobs, arrival_times)]
+        selected_jobs = [self.rng.choice(self.job_type) for _ in range(self.max_job_num)]
+        arrivals = [(job, time,int(sum(sum(d.values()) / len(d) for d in job["process_list"])*self.rng.uniform(2,3)+time)) for job, time in zip(selected_jobs, arrival_times)]
         arrivals.sort(key=lambda x: x[1])
 
         return arrivals
@@ -116,7 +119,7 @@ class TrainingEnv:
             machine for machine in self.machines if self.is_decision_machine(machine)
         ]
 
-        # np.random.shuffle(decision_machines)
+        self.rng.shuffle(decision_machines)
         return decision_machines  # 打乱顺序，模拟异步决策
 
     def get_available_jobs(self):
@@ -146,7 +149,7 @@ class TrainingEnv:
         self.makespans = [0 for _ in range(self.machine_num)]
         self.uncomplete_job = JobList()
         self.complete_job = JobList()
-        self.pre_ur_mean = 1
+        self.pre_ur_mean = 0.0
         self.reward_calculator = AsyncMachineUtilizationReward(self.machine_num)
         self.insert_job()
         decision_machines = self.get_decsion_machines()
@@ -268,10 +271,10 @@ class TrainingEnv:
         如果可用作业大于5，则用调度规则选取的作业信息作为state
         否则
         """
-        ranked_job0 = EDD(self.available_jobs)
         ranked_job1 = CR(self.available_jobs, self.time_step)
-        ranked_job2 = SRO(self.available_jobs, self.time_step)
         ranked_job3 = MS(self.available_jobs, self.time_step)
+        ranked_job0 = EDD(self.available_jobs)
+        ranked_job2 = SRO(self.available_jobs, self.time_step)
         update_avi_jobs = self.get_randed_avi_jobs([ranked_job0,ranked_job1,ranked_job2,ranked_job3])
         # update_avi_jobs = [
         #     EDD(self.available_jobs),
@@ -319,15 +322,26 @@ class TrainingEnv:
             obs_mask = [True for _ in range(self.obs_len)]
             obs_mask[0] = False
         global_state = self.get_global_state()
-        # self.reward_calculator.update_machine_utilization(self.current_machine.id-1,self.current_machine.get_utilization_rate(self.time_step),self.time_step)
-        # reward,detail = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
+        self.reward_calculator.update_machine_utilization(self.current_machine.id-1,self.current_machine.get_utilization_rate(self.time_step),self.time_step)
+        reward,detail = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,self.time_step)
         # reward,detail = self.reward_calculator.calculate_system_reward(self.time_step)
-        utilization = self.compute_UR()
-        if np.any(utilization == 0):
-            reward = 0
-        else:
-            reward = (np.mean(utilization) - self.pre_ur_mean) * 50
-            self.pre_ur_mean = np.mean(utilization)
+        # utilization = self.compute_UR()
+        # if np.any(utilization == 0) or self.pre_ur_mean == 0:
+        #     reward = 0
+        # else:
+        #     reward = (np.mean(utilization) - self.pre_ur_mean) * 50
+        # self.pre_ur_mean = np.mean(utilization)
+        
+        # if np.any(utilization == 0):
+        #     reward = 0
+        # else:
+        #     if  np.mean(utilization) > 1.005 * self.pre_ur_mean:
+        #         reward = 1
+        #     elif np.mean(utilization) < self.pre_ur_mean:
+        #         reward = -1
+        #     else:
+        #         reward = 0
+        # self.pre_ur_mean = np.mean(utilization)
         return obs_i, obs_mask, global_state, reward, done, truncated
 
     def step_by_sr(self, action):

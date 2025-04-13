@@ -20,8 +20,27 @@ def analisy(data_type, id):
     makespan_sr = record_sr["makespan"]
     ur_sr = np.array(list(record_sr["utilization_rate"].values()))
 
+
+
+    with open(f"record_{data_type}_system.json","r") as f:
+        system_record = json.load(f)
+    sys_reward = savgol_filter(system_record["system_reward"],window_length=11,polyorder=2)
+    sys_ur_mean = savgol_filter(system_record["system_mean_utilization"],window_length=11,polyorder=2)
+    sys_ur_std = savgol_filter(system_record["system_std_utilization"], window_length=11, polyorder=2)
     # wt_rl = np.array(list(record_rl["wait_time"].values()))
     # wt_sr = np.array(list(record_sr["wait_time"].values()))
+    fig2 = plt.figure(id + 1, figsize=(10, 8), dpi=600)
+    plt.title("reward")
+    plt.plot(
+        savgol_filter(np.mean(reward_rl, axis=0), window_length=110, polyorder=2),
+        label="RL",
+    )
+    # plt.plot(sys_reward, label="system")
+    for k,reward in enumerate(reward_rl,1):
+        plt.plot(savgol_filter(reward, window_length=91, polyorder=2), alpha=0.2, label = f"machine{k}")
+
+    plt.legend()
+    plt.savefig("fjsp_reward")
 
     fig = plt.figure(id, figsize=(10, 8), dpi=600)
     plt.subplot(321)
@@ -31,14 +50,10 @@ def analisy(data_type, id):
     plt.title("makespan")
 
     plt.subplot(322)
-    # plt.plot(
-    #     savgol_filter(wt_rl.mean(axis=0), window_length=91, polyorder=2), label="RL-wt"
-    # )
-    # plt.plot(
-    #     savgol_filter(wt_sr.mean(axis=0), window_length=91, polyorder=2), label="SR-wt"
-    # )
-    # plt.legend()
-    plt.title("wait time")
+    plt.plot(sys_ur_mean,label="sys_ur_mean")
+    plt.plot(sys_ur_std, label="sys_ur_std")
+    plt.legend()
+    plt.title("system")
 
 
     plt.subplot(323)
@@ -47,6 +62,7 @@ def analisy(data_type, id):
         savgol_filter(np.mean(reward_rl, axis=0), window_length=110, polyorder=2),
         label="RL",
     )
+
     plt.legend()
 
     plt.subplot(324)
@@ -54,10 +70,10 @@ def analisy(data_type, id):
         savgol_filter(np.mean(ur_rl, axis=0), window_length=91, polyorder=2),
         label="RL-mean_ur",
     )
-    plt.plot(
-        savgol_filter(np.mean(ur_sr, axis=0), window_length=91, polyorder=2),
-        label="SR-mean_ur",
-    )
+    # plt.plot(
+    #     savgol_filter(np.mean(ur_sr, axis=0), window_length=91, polyorder=2),
+    #     label="SR-mean_ur",
+    # )
     plt.title("mean utilization rate")
     plt.legend()
 
@@ -66,10 +82,10 @@ def analisy(data_type, id):
         savgol_filter(np.std(ur_rl, axis=0) * 5, window_length=91, polyorder=2),
         label="RL-std_ur",
     )
-    plt.plot(
-        savgol_filter(np.std(ur_sr, axis=0) * 5, window_length=191, polyorder=2),
-        label="SR-std_ur",
-    )
+    # plt.plot(
+    #     savgol_filter(np.std(ur_sr, axis=0) * 5, window_length=191, polyorder=2),
+    #     label="SR-std_ur",
+    # )
 
     plt.legend()
     plt.title("std utilization rate")
@@ -158,7 +174,9 @@ def analisy(data_type, id):
     #     f"{data_type} \n makespan and ur.max() correlation: {correction:.4f}, p_value: {p_value:.2f}"
     # )
     plt.tight_layout()
-    plt.savefig(f"{data_type}.png")
+    plt.savefig(f"analisy_{data_type}")
+
+
 
 
 if __name__ == "__main__":

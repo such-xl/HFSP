@@ -26,6 +26,11 @@ def train_async_mappo(
         "entropy": [],
         "wait_time": {},
     }
+    system_record = {
+        "system_mean_utilization":[],
+        "system_std_utilization":[],
+        "system_reward":[]
+    }
     for i in range(1, env.machine_num + 1):
         record["reward"][f"agent_{i}"] = []
         record["utilization_rate"][f"agent_{i}"] = []
@@ -110,8 +115,14 @@ def train_async_mappo(
         print(
             f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f},KL {kl_div:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  entropy:{entropy:.4f}, tard_sum:{tard_sum} action_count:{action_count},no_repete:{env.count_actions}"
         )
+        _,system_details = env.reward_calculator.calculate_system_reward(env.time_step)
+        system_record["system_mean_utilization"].append(system_details["system_mean_utilization"])
+        system_record["system_std_utilization"].append(system_details["system_std_utilization"])
+        system_record["system_reward"].append(system_details["system_reward"])
     with open(f"result/record_{output_path}_rl.json", "w") as f:
         json.dump(record, f)
+    with open(f"result/record_{output_path}_system.json", "w") as f:
+        json.dump(system_record, f)
     mappo.save_model()
 
 def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
@@ -253,4 +264,4 @@ if __name__ == "__main__":
             max_job_num=PARAMS["max_job_num"],
             job_file_path=PARAMS["data_path"] + PARAMS["job_name"],
         )
-        sr(env=env_sr, num_episodes=PARAMS["num_episodes"], output_path=k)
+        # sr(env=env_sr, num_episodes=PARAMS["num_episodes"], output_path=k)

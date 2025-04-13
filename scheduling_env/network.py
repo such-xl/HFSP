@@ -126,7 +126,7 @@ class ActorNetwork(nn.Module):
             y_out = F.softmax(logits, dim=-1)
             y_out = self.normalize_masked_probs(y_out, mask[:,:-1])
             dist = Categorical(y_out)
-            entropy = self.masked_entropy(y_out, mask)
+            entropy = self.masked_entropy(y_out, mask[:,:-1])
             return action.item(),entropy,entropy
         if hard:
             # 硬Gumbel-Softmax实现
