@@ -1,4 +1,5 @@
 from enum import Enum
+import numpy as np
 from .utils import Node, DoublyLinkList
 
 
@@ -33,31 +34,31 @@ class Job(Node):
 
     def get_state_code(self,time_step):
         """
-        获取job的状态编码 [job_id,状态[0,1,2],当前工序,当前工序的机器id,当前工序剩余加工时间,剩余工序数]
+        
         """
-        # return [
-        #     # self._type,
-        #     0,
-        #     self._status.value,
-        #     self._progress,
-        #     0 if self._machine is None else self._machine.id,
-        #     (
-        #         0
-        #         if self._status == JobStatus.COMPLETED
-        #         else self.current_progress_remaining_time()
-        #     ),
-        #     self._process_num - self._progress,
-        # ]
         remaining_time = self.get_remaining_avg_time()
-        return [
-            self.status.value-1,
-            self._progress/self._process_num,
-            self._process_time/(time_step-self._insert_time+1e-6),
-            remaining_time/(self._due_time-time_step+1e-6) if abs(self._due_time -time_step) >= remaining_time else 0,
-            0, 
-            0,
-        ]
+        progress_ratio = self._progress / self._process_num
+        avg_speed = self._process_time / (time_step - self._insert_time + 1e-6)
+        remaining_due_ratio = max(self._due_time - time_step, 0) / (self._due_time - self._insert_time + 1e-6)
+        tightness = remaining_time / (self._due_time - time_step + 1e-6)
+        tightness = min(tightness, 1.0)  # 可选的clipping，防止过大
 
+        return [
+            progress_ratio,
+            avg_speed,
+            remaining_due_ratio,
+            tightness
+        ]
+    def get_slack_time(self,time_step):
+        return max(self._due_time - time_step-self.get_remaining_avg_time(),0)
+    def get_urgency(self,time_step):
+        urgency = 0
+        slack_time = self.get_slack_time(time_step)
+        if slack_time <= 0:
+            urgency = 1
+        else:
+            urgency = 1 / slack_time
+        return urgency
     def get_t_process(self, machine_id):
         """
         获取当前工序在机器machine上的加工时间
@@ -96,7 +97,6 @@ class Job(Node):
 
         # print(f'j机器{self.machine.id} unload job {self.id}')
         # self._record[-1][-1] += self._t_processed
-        self._machine = None
         self._t_process = 0
         self._t_processed = 0
         self._progress += 1
@@ -105,6 +105,8 @@ class Job(Node):
             if self._progress == self._process_num + 1
             else JobStatus.IDLE
         )
+        if self._status != JobStatus.COMPLETED:
+                self._machine = None
 
     def is_completed(self):
         """判断是否所有工序都完成"""
@@ -162,7 +164,7 @@ class Job(Node):
     def get_remaining_avg_time(self):
         """获取平均剩余加工时间"""
         if self._status == JobStatus.COMPLETED:
-            raise ValueError("job is completed")
+            return 0
         reminder = 0
         if self._status == JobStatus.IDLE:
             reminder = sum(self._process_list[self._progress - 1].values()) / len(

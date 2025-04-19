@@ -168,8 +168,13 @@ class FJSEvalEnv:
         #     SRO(self.available_jobs, self.time_step),
         #     MS(self.available_jobs,self.time_step),
         # ]
-        obs_i = [job.get_state_code(self.time_step) for job in update_avi_jobs]
         self.available_jobs = update_avi_jobs
+        obs_i = []
+        for i,job,in enumerate(update_avi_jobs):
+            code1 = job.get_state_code(self.time_step)
+            code2 = [1 if j == i else 0  for j in range(4)]
+            code = code1 + code2
+            obs_i.append(code)
 
         obs_mask = [False if i < len(obs_i) else True for i in range(self.obs_len)]
         obs_mask[-1] = False
@@ -183,6 +188,8 @@ class FJSEvalEnv:
                 np.std(self.compute_UR()),
                 self.pre_ur_mean,
                 0,
+                0,
+                0
             ]
         )
         return obs_i, obs_mask

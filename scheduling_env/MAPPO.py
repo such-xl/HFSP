@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.distributions import Categorical
 import random
 from .replay_buffer import PPOBuffer
-from .network import ActorNetwork, CriticNetwork
+from .network import ActorNetwork, CriticNetwork,ActorNetwork_atten
 
 
 # 设置随机种子以确保可重复性
@@ -55,7 +55,8 @@ class MAPPOAgent:
         self.device = device
         self.model_save_path = model_save_path
         # 创建策略网络和价值网络
-        self.actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
+        # self.actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
+        self.actor = ActorNetwork(obs_dim,act_dim,num_heads).to(device)
         # 价值网络使用全局状态作为输入
         self.critic = CriticNetwork(global_state_dim).to(device)
         # 创建优化器
@@ -282,23 +283,23 @@ class MAPPOAgent:
                 batch_advantage = advantages_tensor[batch_idx]
                 batch_return = returns_tensor[batch_idx]
                 batch_global_state = global_state_tensor[batch_idx]
-
+                action_mask = batch_obs_mask[:,:-1]
                 # 计算当前策略的动作概率
                 logits = self.actor(batch_obs, batch_obs_mask)
-                logits = logits.masked_fill(batch_obs_mask[:,:-1], -1e9)
+                logits = logits.masked_fill(action_mask, -1e9)
                 probs = F.softmax(logits, dim=-1)
                 assert not torch.isnan(probs).any(), "probs 有 NaN！"
-                normalized_probs = self.normalize_masked_probs(probs, batch_obs_mask[:,:-1])
+                normalized_probs = self.normalize_masked_probs(probs,action_mask)
 
                 # 使用重整化后的概率创建分布
                 dist = Categorical(normalized_probs)
                 curr_log_prob = dist.log_prob(batch_action)
 
-                entropy = self.masked_entropy(normalized_probs, batch_obs_mask[:,:-1]).mean()
+                entropy = self.masked_entropy(normalized_probs,action_mask).mean()
 
                 # 计算重要性采样比率
                 ratio = torch.exp(curr_log_prob - batch_old_log_prob)
-                adaptive_clip = self.adaptive_ppo_clip(batch_obs_mask[:,:-1])
+                adaptive_clip = self.adaptive_ppo_clip(batch_obs_mask)
                 # 计算裁剪的目标函数
                 surr1 = ratio * batch_advantage
                 surr2 = (
@@ -312,10 +313,10 @@ class MAPPOAgent:
                 critic_loss = F.smooth_l1_loss(values, batch_return)
                 with torch.no_grad():
                     old_logits = self.old_actor(batch_obs, batch_obs_mask)
-                    old_logits = old_logits.masked_fill(batch_obs_mask[:,:-1], -1e9)
+                    old_logits = old_logits.masked_fill(action_mask, -1e9)
                     old_probs = F.softmax(old_logits, dim=-1)
-                    old_normalized_probs = self.normalize_masked_probs(old_probs, batch_obs_mask[:,:-1])
-                    kl_div = self.masked_kl_divergence(normalized_probs, old_normalized_probs, batch_obs_mask[:,:-1]).mean()
+                    old_normalized_probs = self.normalize_masked_probs(old_probs,action_mask)
+                    kl_div = self.masked_kl_divergence(normalized_probs, old_normalized_probs, action_mask).mean()
 
                 # 添加熵正则化
                 loss = (
@@ -356,8 +357,8 @@ class MAPPOAgent:
     def save(self):
         print(self.model_save_path)
         torch.save(self.actor.state_dict(),self.model_save_path)
-    def load(self):
-        state_dict = torch.load(self.model_save_path)
+    def load(self,model_path):
+        state_dict = torch.load(model_path or self.model_save_path)
         self.actor.load_state_dict(state_dict)
         self.actor.eval()
 class AsyncMAPPO:
@@ -482,6 +483,6 @@ class AsyncMAPPO:
     def save_model(self):
         """保存模型"""
         self.agents.save()
-    def load_model(self):
+    def load_model(self,model_path = None):
         """加载模型"""
-        self.agents.load()
+        self.agents.load(model_path)

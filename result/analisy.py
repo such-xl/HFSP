@@ -21,12 +21,13 @@ def analisy(data_type, id):
     ur_sr = np.array(list(record_sr["utilization_rate"].values()))
 
 
-
     with open(f"record_{data_type}_system.json","r") as f:
         system_record = json.load(f)
     sys_reward = savgol_filter(system_record["system_reward"],window_length=11,polyorder=2)
-    sys_ur_mean = savgol_filter(system_record["system_mean_utilization"],window_length=11,polyorder=2)
-    sys_ur_std = savgol_filter(system_record["system_std_utilization"], window_length=11, polyorder=2)
+    sys_tardiness = system_record["avg_tardiness"]
+    sys_tardiness_rate = savgol_filter(system_record["tardiness_rate"], window_length=11, polyorder=2)
+    # sys_ur_mean = savgol_filter(system_record["system_mean_utilization"],window_length=11,polyorder=2)
+    # sys_ur_std = savgol_filter(system_record["system_std_utilization"], window_length=11, polyorder=2)
     # wt_rl = np.array(list(record_rl["wait_time"].values()))
     # wt_sr = np.array(list(record_sr["wait_time"].values()))
     fig2 = plt.figure(id + 1, figsize=(10, 8), dpi=600)
@@ -44,16 +45,17 @@ def analisy(data_type, id):
 
     fig = plt.figure(id, figsize=(10, 8), dpi=600)
     plt.subplot(321)
-    plt.plot(savgol_filter(makespan_rl, window_length=91, polyorder=2), label="RL")
-    plt.plot(savgol_filter(makespan_sr, window_length=91, polyorder=2), label="SR")
+    # plt.plot(savgol_filter(makespan_rl, window_length=91, polyorder=2), label="RL")
+    # plt.plot(savgol_filter(makespan_sr, window_length=91, polyorder=2), label="SR")
+    plt.plot(sys_tardiness_rate)
     plt.legend()
-    plt.title("makespan")
+    plt.title("tardiness_rate")
 
     plt.subplot(322)
-    plt.plot(sys_ur_mean,label="sys_ur_mean")
-    plt.plot(sys_ur_std, label="sys_ur_std")
+    plt.plot(sys_tardiness,label="tardness")
+
     plt.legend()
-    plt.title("system")
+    plt.title("tardness")
 
 
     plt.subplot(323)
@@ -104,15 +106,17 @@ def analisy(data_type, id):
     )
     plt.legend()
 
-    correction, p_value = pearsonr(makespan_rl, ur_rl.max(axis=0))
-    print(data_type)
-
+    correction, p_value = pearsonr(sys_tardiness, reward_rl.mean(axis=0))
     print(
-        f"correlation between makespan and ur.max: {correction:.4f}, p_value: {p_value:.2f}"
+        f"correlation between tardiness and G: {correction:.4f}, p_value: {p_value:.2f}"
     )
-    correction, p_value = spearmanr(makespan_rl, ur_rl.min(axis=0))
+    correction,p_value = spearmanr(sys_tardiness, reward_rl.mean(axis=0))
     print(
-        f"correlation between makespan and ur.min: {correction:.4f}, p_value: {p_value:.2f}"
+        f"correlation between tardiness and G: {correction:.4f}, p_value: {p_value:.2f}"
+    )
+    correction, p_value = spearmanr(sys_tardiness_rate, reward_rl.mean(axis=0))
+    print(
+        f"correlation betwee tardiness_rate and G: {correction:.4f}, p_value: {p_value:.2f}"
     )
     correction, p_value = spearmanr(makespan_rl, ur_rl.mean(axis=0))
     print(

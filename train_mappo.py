@@ -12,7 +12,7 @@ from scheduling_env.utils import ExponentialTempScheduler
 def train_async_mappo(
     env: TrainingEnv,
     mappo: AsyncMAPPO,
-    num_episodes=1000,
+    num_episodes=2000,
     batch_size=8,
     epochs=10,
     output_path="default",
@@ -27,9 +27,9 @@ def train_async_mappo(
         "wait_time": {},
     }
     system_record = {
-        "system_mean_utilization":[],
-        "system_std_utilization":[],
-        "system_reward":[]
+        "tardiness_rate":[],
+        "avg_tardiness":[],
+        "system_reward":[],
     }
     for i in range(1, env.machine_num + 1):
         record["reward"][f"agent_{i}"] = []
@@ -99,6 +99,10 @@ def train_async_mappo(
         )
 
         record["makespan"].append(env.time_step)
+        
+        if action_count[-1]/sum(action_count) > 0.5:
+            print('劣质数据')
+            continue
         actor_loss, critic_loss, entropy, kl_div = mappo.update(batch_size, epochs,tau=current_temp,
                 hard=(current_temp < 0.5),)
         record["actor_loss"].append(actor_loss)
@@ -116,8 +120,12 @@ def train_async_mappo(
             f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f},KL {kl_div:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  entropy:{entropy:.4f}, tard_sum:{tard_sum} action_count:{action_count},no_repete:{env.count_actions}"
         )
         _,system_details = env.reward_calculator.calculate_system_reward(env.time_step)
-        system_record["system_mean_utilization"].append(system_details["system_mean_utilization"])
-        system_record["system_std_utilization"].append(system_details["system_std_utilization"])
+        pass
+        # system_record["system_mean_utilization"].append(system_details["system_mean_utilization"])
+        # system_record["system_std_utilization"].append(system_details["system_std_utilization"])
+        # system_record["system_reward"].append(system_details["system_reward"])
+        system_record["tardiness_rate"].append(system_details["tardiness_rate"])
+        system_record["avg_tardiness"].append(system_details["avg_tardiness"])
         system_record["system_reward"].append(system_details["system_reward"])
     with open(f"result/record_{output_path}_rl.json", "w") as f:
         json.dump(record, f)
@@ -179,12 +187,12 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
 
 
 PARAMS = {
-    "num_episodes":800,
+    "num_episodes":2000,
     "batch_size": 12,
-    "actor_lr": 3e-3,
-    "critic_lr": 3e-4,
+    "actor_lr": 3e-4,
+    "critic_lr": 3e-5,
     "gamma": 0.98,
-    "obs_dim": 6,
+    "obs_dim": 8,
     "obs_len": 5,
     "global_state_dim": 6,
     "global_state_len": 48,
@@ -264,4 +272,4 @@ if __name__ == "__main__":
             max_job_num=PARAMS["max_job_num"],
             job_file_path=PARAMS["data_path"] + PARAMS["job_name"],
         )
-        # sr(env=env_sr, num_episodes=PARAMS["num_episodes"], output_path=k)
+        sr(env=env_sr, num_episodes=PARAMS["num_episodes"], output_path=k)

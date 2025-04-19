@@ -49,7 +49,7 @@ PARAMS = {
     "actor_lr": 6e-5,
     "critic_lr": 4e-4,
     "gamma": 1,
-    "obs_dim": 6,
+    "obs_dim": 8,
     "obs_len": 5,
     "global_state_dim": 6,
     "global_state_len": 30,

@@ -3,7 +3,7 @@ import time
 from collections import deque
 
 class AsyncMachineUtilizationReward:
-    def __init__(self, num_machines, w1=1, w2=0.2, safety_threshold=0.9, 
+    def __init__(self, num_machines, w1=1, w2=0, safety_threshold=0.9, 
                  history_length=600, decay_factor=0.95):
         """
         初始化异步奖励函数计算器（无锁版本）
@@ -38,7 +38,49 @@ class AsyncMachineUtilizationReward:
         
         # 最后一次系统更新的时间戳
         self.last_system_update = 0
-    
+    def normalize_reward(self, reward, scale=2.0):
+        """
+        使用sigmoid函数将奖励归一化到[-1,1]范围
+        
+        参数:
+        reward (float): 原始奖励值
+        scale (float): 控制sigmoid陡峭程度的缩放因子
+        
+        返回:
+        float: 归一化后的奖励，范围在[-1,1]
+        """
+        # sigmoid函数返回(0,1)范围的值，乘以2再减1转换为(-1,1)
+        normalized = 2 / (1 + np.exp(-scale * reward)) - 1
+        return normalized
+    def analyze_trend_change_rate(self, machine_id, current_time, window_size=5):
+        """分析利用率趋势的变化率"""
+        history = self.machine_history[machine_id]
+        if len(history['utilization']) < window_size:
+            return 0.0
+        
+        # 获取最近的window_size个利用率
+        recent_utils = list(history['utilization'])[-window_size:]
+        recent_times = list(history['timestamp'])[-window_size:]
+        
+        # 计算相邻点之间的变化率
+        change_rates = []
+        for i in range(1, len(recent_utils)):
+            time_diff = recent_times[i] - recent_times[i-1]
+            if time_diff > 0:  # 避免除以零
+                util_change = recent_utils[i] - recent_utils[i-1]
+                rate = util_change / time_diff
+                change_rates.append(rate)
+        
+        if not change_rates:
+            return 0.0
+        
+        # 计算变化率的平均绝对值 - 越小表示越稳定
+        avg_change_rate = np.mean(np.abs(change_rates))
+        
+        # 将变化率转换为奖励 - 变化率越小，奖励越高
+        stability_reward = np.exp(-5 * avg_change_rate) - 0.5  # 范围约为[-0.5, 0.5]
+        
+        return stability_reward
     def update_machine_utilization(self, machine_id, utilization, timestamp=None):
         """
         更新单个机器的利用率
@@ -106,7 +148,7 @@ class AsyncMachineUtilizationReward:
         
         # 计算时间权重
         time_diffs = np.array([current_time - t for t in history['timestamp']])
-        weights = np.exp(-time_diffs / 10.0)  # 10秒的时间尺度
+        weights = np.exp(-time_diffs / 60.0)  # 10秒的时间尺度
         weights = weights / np.sum(weights)  # 归一化权重
         
         # 计算加权利用率
@@ -153,10 +195,8 @@ class AsyncMachineUtilizationReward:
         balance_contribution = 1 - abs(machine_utilization - system_mean_utilization) / max(system_mean_utilization, 0.01)
         global_reward = balance_contribution * (self.w1 * system_mean_utilization - self.w2 * system_std_utilization)
         
-        
         # 总奖励
-        total_reward = (0.1 * local_reward + 0.9 * global_reward - 0.5)
-        
+        total_reward = (0.1 * local_reward +  0.9* global_reward - 0.5)
         # 返回奖励和详细分解
         reward_details = {
             'local_reward': local_reward,

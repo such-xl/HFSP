@@ -115,10 +115,35 @@ def create_cfjsp_same_job():
     with open("cfjsp_same.json", "w") as f:
         json.dump(job_list, f)
 
+def create_test_fjsp_same_job():
+    """
+    生成FJSP_DIFF数据集
+    """
+    job_list = []
+    for i in range(20):
+        data_dict = {
+            "type": i + 1,
+            "process_num": np.random.randint(10, 30),
+            "process_list": [],
+        }
+        for j in range(data_dict["process_num"]):
+            M = np.random.choice(
+                np.arange(1, 20), size=np.random.randint(1, 20), replace=False
+            )
+            T = np.random.randint(5, 35)
+            P = {}
+            for m in M:
+                P[int(m)] = T
+            data_dict["process_list"].append(P)
+        job_list.append(data_dict)
+    with open("fjsp_same_test.json", "w") as f:
+        json.dump(job_list, f)
+
 
 if __name__ == "__main__":
-    create_jsp_job()
-    create_fjsp_diff_job()
-    create_fjsp_same_job()
-    create_cfjsp_diff_job()
-    create_cfjsp_same_job()
+    # create_jsp_job()
+    # create_fjsp_diff_job()
+    # create_fjsp_same_job()
+    # create_cfjsp_diff_job()
+    # create_cfjsp_same_job()
+    create_test_fjsp_same_job()
