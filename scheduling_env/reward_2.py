@@ -239,18 +239,18 @@ class AsyncTardinessReward:
         
         # 如果作业已完成，增加对迟到的惩罚
         completion_penalty = 0
-        if assigned_job_id in self.job_tracking and self.job_tracking[assigned_job_id]['remaining_time'] <= 0:
-            is_tardy, tardiness,deadline = self.update_job_completion(assigned_job_id, current_time, machine_id)
-            if is_tardy:
-                # 迟到惩罚：迟到率惩罚 + 迟到时间惩罚
-                tardiness_rate_penalty = -self.w_tardiness_rate * 1.0  # 每个迟到作业的惩罚
-                tardiness_time_penalty = -self.w_tardiness_time * tardiness / max(1, deadline)  # 归一化迟到时间
-                completion_penalty = tardiness_rate_penalty + tardiness_time_penalty
+        # if assigned_job_id in self.job_tracking and self.job_tracking[assigned_job_id]['remaining_time'] <= 0:
+        #     is_tardy, tardiness,deadline = self.update_job_completion(assigned_job_id, current_time, machine_id)
+        #     if is_tardy:
+        #         # 迟到惩罚：迟到率惩罚 + 迟到时间惩罚
+        #         tardiness_rate_penalty = -self.w_tardiness_rate * 1.0  # 每个迟到作业的惩罚
+        #         tardiness_time_penalty = -self.w_tardiness_time * tardiness / max(1, deadline)  # 归一化迟到时间
+        #         completion_penalty = tardiness_rate_penalty + tardiness_time_penalty
         
         # 总奖励
         total_reward = (self.w_local * local_reward + 
-                        self.w_global * global_reward + 
-                        completion_penalty)
+                        self.w_global * global_reward + 0)
+                        # completion_penalty)
         
         # 归一化奖励
         normalized_reward = self.normalize_reward(total_reward)

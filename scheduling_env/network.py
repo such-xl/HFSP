@@ -84,8 +84,10 @@ class ActorNetwork(nn.Module):
             # nn.Softmax(dim=-1)
         )
     def forward(self, x, mask=None):
-        x = self.mlp(x)
-        logits = x.masked_fill(mask[:,:-1], float("-inf"))
+        x1 = self.mlp(x)
+        logits = x1.masked_fill(mask[:,:-1], float("-inf"))
+        if torch.isnan(logits).any():
+            print("logits 有 NaN！")
         assert not torch.isnan(logits).any(), "logits 有 NaN！"
 
 

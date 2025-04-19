@@ -23,13 +23,15 @@ def analisy(data_type, id):
 
     with open(f"record_{data_type}_system.json","r") as f:
         system_record = json.load(f)
-    sys_reward = savgol_filter(system_record["system_reward"],window_length=11,polyorder=2)
+    sys_reward = system_record["system_reward"]
     sys_tardiness = system_record["avg_tardiness"]
+
     sys_tardiness_rate = savgol_filter(system_record["tardiness_rate"], window_length=11, polyorder=2)
     # sys_ur_mean = savgol_filter(system_record["system_mean_utilization"],window_length=11,polyorder=2)
     # sys_ur_std = savgol_filter(system_record["system_std_utilization"], window_length=11, polyorder=2)
     # wt_rl = np.array(list(record_rl["wait_time"].values()))
     # wt_sr = np.array(list(record_sr["wait_time"].values()))
+    tardiness = np.array(list(record_rl["tardiness"].values())[:100])
     fig2 = plt.figure(id + 1, figsize=(10, 8), dpi=600)
     plt.title("reward")
     plt.plot(
@@ -45,8 +47,6 @@ def analisy(data_type, id):
 
     fig = plt.figure(id, figsize=(10, 8), dpi=600)
     plt.subplot(321)
-    # plt.plot(savgol_filter(makespan_rl, window_length=91, polyorder=2), label="RL")
-    # plt.plot(savgol_filter(makespan_sr, window_length=91, polyorder=2), label="SR")
     plt.plot(sys_tardiness_rate)
     plt.legend()
     plt.title("tardiness_rate")
@@ -61,7 +61,7 @@ def analisy(data_type, id):
     plt.subplot(323)
     plt.title("reward")
     plt.plot(
-        savgol_filter(np.mean(reward_rl, axis=0), window_length=110, polyorder=2),
+        savgol_filter(sys_reward, window_length=110, polyorder=2),
         label="RL",
     )
 
@@ -69,7 +69,7 @@ def analisy(data_type, id):
 
     plt.subplot(324)
     plt.plot(
-        savgol_filter(np.mean(ur_rl, axis=0), window_length=91, polyorder=2),
+        savgol_filter(sys_reward, window_length=91, polyorder=2),
         label="RL-mean_ur",
     )
     # plt.plot(
@@ -106,11 +106,11 @@ def analisy(data_type, id):
     )
     plt.legend()
 
-    correction, p_value = pearsonr(sys_tardiness, reward_rl.mean(axis=0))
+    correction, p_value = spearmanr(tardiness.sum(axis=0),sys_reward)
     print(
-        f"correlation between tardiness and G: {correction:.4f}, p_value: {p_value:.2f}"
+        f"correlation between tardiness and sys_reward: {correction:.4f}, p_value: {p_value:.2f}"
     )
-    correction,p_value = spearmanr(sys_tardiness, reward_rl.mean(axis=0))
+    correction,p_value = spearmanr(tardiness.sum(axis=0), reward_rl.mean(axis=0))
     print(
         f"correlation between tardiness and G: {correction:.4f}, p_value: {p_value:.2f}"
     )

@@ -122,7 +122,7 @@ class TrainingEnv:
             machine for machine in self.machines if self.is_decision_machine(machine)
         ]
 
-        # self.rng.shuffle(decision_machines)
+        self.rng.shuffle(decision_machines)
         return decision_machines  # 打乱顺序，模拟异步决策
 
     def get_available_jobs(self):
@@ -243,7 +243,7 @@ class TrainingEnv:
                 self.uncomplete_job.disengage_node(job)
                 self.complete_job.append(job)
                 job.compute_wait_time(self.time_step)
-                # self.reward_calculator.update_job_completion(job.id-1,self.time_step,machine.id-1)
+                self.reward_calculator.update_job_completion(job.id-1,self.time_step,machine.id-1)
             job = next_job
         # print(f'{self.complete_job.length}:{self.uncomplete_job.length}')
         done = True if self.complete_job.length >= self.max_job_num else False
@@ -310,9 +310,9 @@ class TrainingEnv:
     def step(self, action):
         self.current_machine.load_job(self.available_jobs[action], self.time_step)
         self.current_machine.update_decision_time(self.time_step)
+        reward,_ = self.reward_calculator.calculate_system_reward(self.time_step)
         done, truncated = False, False
         cur_job:Job = self.available_jobs[action]
-        reward,_ = self.reward_calculator.calculate_machine_reward(self.current_machine.id-1,cur_job.id-1,self.time_step,cur_job.get_remaining_avg_time())
         if (
             not self.is_any_machine_need_to_decision()
         ):  # 没有机器需要采样动作，直接运行,直到结束，或者有机器需要采样动作
@@ -328,9 +328,7 @@ class TrainingEnv:
             obs_mask = [True for _ in range(self.obs_len)]
             obs_mask[0] = False
             global_state = [0 for _ in range(6)]
-
-
-        return obs_i, obs_mask, global_state, reward, done, truncated
+        return obs_i, obs_mask, global_state, reward , done, truncated
 
     def step_by_sr(self, action):
         self.current_machine.load_job(action, self.time_step)
