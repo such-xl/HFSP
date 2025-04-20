@@ -4,7 +4,7 @@ from collections import deque
 
 class AsyncTardinessReward:
     def __init__(self, num_machines, w_local=0.4,w_global=0.6, 
-                 w_tardiness_rate=0, w_tardiness_time=1,
+                 w_tardiness_rate=0.4, w_tardiness_time=0.6,
                  history_length=600, decay_factor=0.95,
                  urgency_factor=3.0):
         """
@@ -301,7 +301,7 @@ class AsyncTardinessReward:
         negative_slack_rate = negative_slack_jobs / len(all_slacks) if all_slacks else 0
         
         # 系统奖励：基于迟到率、平均迟到时间和危险作业比例
-        system_reward = -self.w_tardiness_rate * tardiness_rate - self.w_tardiness_time * (avg_tardiness / 100.0) - 0.5 * negative_slack_rate
+        system_reward = -self.w_tardiness_rate * tardiness_rate - self.w_tardiness_time * (avg_tardiness / 100.0) - 1 * negative_slack_rate
         normalized_reward = self.normalize_reward(system_reward)
         
         # 详细信息

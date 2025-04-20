@@ -59,7 +59,7 @@ class TrainingEnv:
         self.file_path = job_file_path
 
 
-    def create_job_arriavl_seq(self, lambda_rate=0.15):
+    def create_job_arriavl_seq(self, lambda_rate=0.3):
         """
         生成指数分布的间隔时间，并取整
         """

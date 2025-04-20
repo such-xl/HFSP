@@ -106,16 +106,18 @@ def train_async_mappo(
         record["actor_loss"].append(actor_loss)
         record["critic_loss"].append(critic_loss)
         record["entropy"].append(entropy)
-        tard_sum = 0
+        tard_sum ,tard_count  = 0,0
         job = env.complete_job.head
         while job:
             record["wait_time"][f"job_{job.id}"].append(job.wait_time)
             record["tardiness"][f"job_{job.id}"].append(job.tard_time)
             tard_sum += job.tard_time
+            if job.tard_time > 0:
+                tard_count += 1
             job = job.next
         
         print(
-            f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f},KL {kl_div:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  entropy:{entropy:.4f}, tard_sum:{tard_sum} action_count:{action_count},no_repete:{env.count_actions}"
+            f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f},KL {kl_div:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  entropy:{entropy:.4f}, tard_sum:{tard_sum/tard_count:.4f} action_count:{action_count},no_repete:{env.count_actions}"
         )
         _,system_details = env.reward_calculator.calculate_system_reward(env.time_step)
         # system_record["system_mean_utilization"].append(system_details["system_mean_utilization"])
