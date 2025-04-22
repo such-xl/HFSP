@@ -132,9 +132,11 @@ class PPOBuffer:
             (buffer_size, state_dim), dtype=torch.float32, device=device
         )
         self.next_global_states = torch.zeros(
-            (buffer_size,state_dim), dtype=torch.float32, device=device
+            (buffer_size, state_dim), dtype=torch.float32, device=device
         )
         self.log_probs = torch.zeros((buffer_size), dtype=torch.float32, device=device)
+
+        self.job = [0 for _ in range(buffer_size)]
         self.ptr = 0
         self.buffer_size = buffer_size
         self.full = False
@@ -151,6 +153,7 @@ class PPOBuffer:
         global_state,
         next_global_state,
         log_prob,
+        job_id
     ):
         """
         存储一个时间步的交互数据
@@ -189,6 +192,7 @@ class PPOBuffer:
             self.log_probs[self.ptr] = torch.tensor(
                 log_prob, dtype=torch.float32, device=self.device
             )
+            self.job[self.ptr] = job_id
             if self.ptr > 0:
                 prev_idx = (self.ptr - 1) % self.buffer_size
                 self.next_obs[prev_idx] = torch.tensor(
@@ -207,6 +211,7 @@ class PPOBuffer:
         self.ptr = (self.ptr + 1) % self.buffer_size
         if self.ptr == 0:
             self.full = True
+            raise ValueError("Buffer is full")
 
     def get(self):
         """
@@ -232,10 +237,17 @@ class PPOBuffer:
         }
 
         return data_dict
+
     def update_last_reward(self, reward):
         self.rewards[(self.ptr - 1) % self.buffer_size] = torch.tensor(
             reward, dtype=torch.float32, device=self.device
         )
+    def update_reward(self,reward,jid):
+        for i in range(self.ptr):
+            if self.job[i] == jid:
+                self.rewards[i] = torch.tensor(
+                    reward, dtype=torch.float32, device=self.device
+                )
     def clear(self):
         """
         清空缓冲区

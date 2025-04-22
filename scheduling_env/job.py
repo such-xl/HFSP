@@ -11,7 +11,13 @@ class JobStatus(Enum):
 
 class Job(Node):
     def __init__(
-        self, id: int, type: int, process_num: int, process_list: list, insert_time: int, due_time: int
+        self,
+        id: int,
+        type: int,
+        process_num: int,
+        process_list: list,
+        insert_time: int,
+        due_time: int,
     ) -> None:
         super().__init__(None)
         self._id = id  # job序号,从1开始
@@ -31,27 +37,25 @@ class Job(Node):
         self._completed_time = 0  # 作业完成时间
         self._wait_time = 0  # 作业等待时间
         self._tard_time = 0
+        self._process_record = []
 
-    def get_state_code(self,time_step):
-        """
-        
-        """
+    def get_state_code(self, time_step):
+        """ """
         remaining_time = self.get_remaining_avg_time()
         progress_ratio = self._progress / self._process_num
         avg_speed = self._process_time / (time_step - self._insert_time + 1e-6)
-        remaining_due_ratio = max(self._due_time - time_step, 0) / (self._due_time - self._insert_time + 1e-6)
+        remaining_due_ratio = max(self._due_time - time_step, 0) / (
+            self._due_time - self._insert_time + 1e-6
+        )
         tightness = remaining_time / (self._due_time - time_step + 1e-6)
         tightness = min(tightness, 1.0)  # 可选的clipping，防止过大
 
-        return [
-            progress_ratio,
-            avg_speed,
-            remaining_due_ratio,
-            tightness
-        ]
-    def get_slack_time(self,time_step):
-        return max(self._due_time - time_step-self.get_remaining_avg_time(),0)
-    def get_urgency(self,time_step):
+        return [progress_ratio, avg_speed, remaining_due_ratio, tightness]
+
+    def get_slack_time(self, time_step):
+        return max(self._due_time - time_step - self.get_remaining_avg_time(), 0)
+
+    def get_urgency(self, time_step):
         urgency = 0
         slack_time = self.get_slack_time(time_step)
         if slack_time <= 0:
@@ -59,6 +63,7 @@ class Job(Node):
         else:
             urgency = 1 / slack_time
         return urgency
+
     def get_t_process(self, machine_id):
         """
         获取当前工序在机器machine上的加工时间
@@ -87,6 +92,7 @@ class Job(Node):
         self._t_processed = 0
         self._status = JobStatus.RUNNING
         self._rest = time_step
+        self._process_record.append(machine.id)
 
     def unload_machine(self):
         """将job从machine卸载"""
@@ -106,7 +112,7 @@ class Job(Node):
             else JobStatus.IDLE
         )
         if self._status != JobStatus.COMPLETED:
-                self._machine = None
+            self._machine = None
 
     def is_completed(self):
         """判断是否所有工序都完成"""
@@ -231,15 +237,21 @@ class Job(Node):
     @property
     def wait_time(self):
         return self._wait_time
+
     @property
     def due_time(self):
         return self._due_time
+
     @property
     def tard_time(self):
         return self._tard_time
+
     @due_time.setter
     def due_time(self, due_time):
         self._due_time = due_time
+    @property
+    def process_record(self):
+        return self._process_record
 
 class JobList(DoublyLinkList):
     def __init__(self) -> None:

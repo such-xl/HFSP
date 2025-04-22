@@ -6,8 +6,9 @@ import time
 from scheduling_env.training_env import TrainingEnv
 from scheduling_env.MAPPO import AsyncMAPPO
 
-from scheduling_env.basic_scheduling_algorithms import EDD,MS,SRO,CR,noname_2
+from scheduling_env.basic_scheduling_algorithms import EDD, MS, SRO, CR, noname_2
 from scheduling_env.utils import ExponentialTempScheduler
+
 
 def train_async_mappo(
     env: TrainingEnv,
@@ -25,12 +26,12 @@ def train_async_mappo(
         "critic_loss": [],
         "entropy": [],
         "wait_time": {},
-        "tardiness":{},
+        "tardiness": {},
     }
     system_record = {
-        "tardiness_rate":[],
-        "avg_tardiness":[],
-        "system_reward":[],
+        "tardiness_rate": [],
+        "avg_tardiness": [],
+        "system_reward": [],
     }
     for i in range(1, env.machine_num + 1):
         record["reward"][f"agent_{i}"] = []
@@ -58,6 +59,8 @@ def train_async_mappo(
                 tau=current_temp,
                 hard=(current_temp < 0.5),
             )
+            job_id = env.available_jobs[action].id
+            machine_id = env.current_machine.id
             action_count[action] += 1
             (
                 next_obs_i,
@@ -67,7 +70,7 @@ def train_async_mappo(
                 done,
                 truncated,
             ) = env.step(action)
-            G[f"agent_{env.current_machine.id}"] += reward 
+            G[f"agent_{env.current_machine.id}"] += reward
             mappo.store_experience(
                 obs_i,
                 obs_mask,
@@ -79,19 +82,14 @@ def train_async_mappo(
                 global_state,
                 next_global_state,
                 log_prob,
-                env.current_machine.id - 1,
+                machine_id,
+                job_id
             )
             obs_i = next_obs_i
             obs_mask = next_obs_mask
             global_state = next_global_state
-        
-        # mappo.update_last_reward(env.rewards)
-        # for i,r in enumerate(env.rewards):
-        #     G[f"agent_{i+1}"] += r
-        list(
-            record["reward"][f"agent_{machine.id}"].append(G[f"agent_{machine.id}"])
-            for machine in env.machines
-        )
+
+
 
         list(
             record["utilization_rate"][f"agent_{machine.id}"].append(
@@ -100,13 +98,28 @@ def train_async_mappo(
             for machine in env.machines
         )
 
+            
         record["makespan"].append(env.time_step)
-        actor_loss, critic_loss, entropy, kl_div = mappo.update(batch_size, epochs,tau=current_temp,
-                hard=(current_temp < 0.5),)
+        # 奖励设计
+        jid,tardiness = env.get_tardiness()
+        t = np.array(tardiness, dtype=np.float32)
+        rewards = -np.log1p(t)
+        for jid,reward in zip(jid,rewards):
+            mappo.update_reward(reward, jid)
+        for i,buffer in enumerate(mappo.buffers,1):
+            reward_sum = buffer.rewards[:buffer.ptr].clone().sum().item()
+            record["reward"][f"agent_{i}"].append(reward_sum)
+        actor_loss, critic_loss, entropy, kl_div = mappo.update(
+            batch_size,
+            epochs,
+            tau=current_temp,
+            hard=(current_temp < 0.5),
+        )
+        
         record["actor_loss"].append(actor_loss)
         record["critic_loss"].append(critic_loss)
         record["entropy"].append(entropy)
-        tard_sum ,tard_count  = 0,0
+        tard_sum, tard_count = 0, 0
         job = env.complete_job.head
         while job:
             record["wait_time"][f"job_{job.id}"].append(job.wait_time)
@@ -115,16 +128,14 @@ def train_async_mappo(
             if job.tard_time > 0:
                 tard_count += 1
             job = job.next
-        
+
+
         print(
-            f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f},KL {kl_div:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  entropy:{entropy:.4f}, tard_sum:{tard_sum/tard_count:.4f} action_count:{action_count},no_repete:{env.count_actions}"
+            f"Episode {episode + 1}/{num_episodes}: Actor Loss {actor_loss:.4f}, Critic Loss {critic_loss:.4f}, \
+            KL {kl_div*100:.4f}, make_span {env.time_step}, avg_reward {np.mean(list(G.values())):.4f}, tau {current_temp:.4f},  \
+            entropy:{entropy:.4f}, tard_sum:{tard_sum} action_count:{action_count},no_repete:{env.count_actions}"
         )
-        _,system_details = env.reward_calculator.calculate_system_reward(env.time_step)
-        # system_record["system_mean_utilization"].append(system_details["system_mean_utilization"])
-        # system_record["system_std_utilization"].append(system_details["system_std_utilization"])
-        # system_record["system_reward"].append(system_details["system_reward"])
-        print(system_details["avg_tardiness"]*system_details["tardiness_rate"] * 100)
-        # print(env.reward_calculator.system_history)
+        _, system_details = env.reward_calculator.calculate_system_reward(env.time_step)
         system_record["tardiness_rate"].append(system_details["tardiness_rate"])
         system_record["avg_tardiness"].append(system_details["avg_tardiness"])
         system_record["system_reward"].append(system_details["system_reward"])
@@ -133,6 +144,7 @@ def train_async_mappo(
     with open(f"result/record_{output_path}_system.json", "w") as f:
         json.dump(system_record, f)
     mappo.save_model()
+
 
 def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
     record = {
@@ -153,15 +165,12 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
         _, _, _ = env.reset()
         done, truncated = False, False
         while not done and not truncated:
-            # action = (env.available_jobs, env.current_machine, env.compute_UR())
-            # action1 = CR(env.available_jobs, env.time_step)
-            # action = noname_2(env.available_jobs, env.current_machine, env.compute_UR())
-            action = EDD(env.available_jobs)[0]
-            # action3 = MS(env.available_jobs,env.time_step)
-            # action4 = SRO(env.available_jobs,env.time_step)
+            action = CR(env.available_jobs, env.time_step)[0]
+            # action = EDD(env.available_jobs)[0]
+            # action = MS(env.available_jobs,env.time_step)[0]
+            # action = SRO(env.available_jobs,env.time_step)[0]
             # action = np.random.choice([action1,action2,action3,action4])
-            reward, done, truncated = env.step_by_sr(action)
-            G[f"agent_{env.current_machine.id}"] += reward
+            done, truncated = env.step_by_sr(action)
 
         list(
             record["reward"][f"agent_{machine.id}"].append(G[f"agent_{machine.id}"])
@@ -181,32 +190,33 @@ def sr(env: TrainingEnv, num_episodes=1000, output_path="default"):
             record["wait_time"][f"job_{job.id}"].append(job.wait_time)
             tard_sum += job.tard_time
             job = job.next
-        print(f"Episode {episode + 1}/{num_episodes}: make_span {env.time_step}, tard_sum: {tard_sum}")
+        print(
+            f"Episode {episode + 1}/{num_episodes}: make_span {env.time_step}, tard_sum: {tard_sum}"
+        )
 
     with open(f"result/record_{output_path}_sr.json", "w") as f:
         json.dump(record, f)
 
 
 PARAMS = {
-    "num_episodes":1000,
+    "num_episodes": 1000,
     "batch_size": 12,
-    "actor_lr": 3e-4,
-    "critic_lr": 3e-5,
-    "gamma": 0.98,
+    "actor_lr": 3e-5,
+    "critic_lr": 3e-6,
+    "gamma": 0.99,
     "obs_dim": 8,
     "obs_len": 5,
     "global_state_dim": 6,
     "global_state_len": 48,
     "action_dim": 4,
-    "max_machine_num": 10,
+    "machine_num": 10,
     "max_job_num": 100,
     "share_parameters": False,
     "num_heads": 6,
     "device": (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     ),
-    "data_path": os.path.dirname(os.path.abspath(__file__))
-    + "/experiment/fjsp/",
+    "data_path": os.path.dirname(os.path.abspath(__file__)) + "/experiment/fjsp/",
     "job_name": "record.json",
     "train": False,
     "idle_action": False,
@@ -238,11 +248,12 @@ if __name__ == "__main__":
             state_dim=PARAMS["global_state_dim"],
             state_len=PARAMS["global_state_len"],
             action_dim=PARAMS["action_dim"],
+            machine_num=PARAMS["machine_num"],
             max_job_num=PARAMS["max_job_num"],
             job_file_path=PARAMS["data_path"] + PARAMS["job_name"],
         )
         mappo = AsyncMAPPO(
-            n_agents=PARAMS["max_machine_num"],
+            n_agents=PARAMS["machine_num"],
             obs_dim=PARAMS["obs_dim"],
             obs_len=PARAMS["obs_len"],
             global_state_dim=PARAMS["global_state_dim"],
@@ -253,7 +264,7 @@ if __name__ == "__main__":
             gamma=PARAMS["gamma"],
             num_heads=PARAMS["num_heads"],
             device=PARAMS["device"],
-            model_save_path=PARAMS["model_path"]+"fjsp_same.pth",
+            model_save_path=PARAMS["model_path"] + "fjsp_same.pth",
         )
         train_async_mappo(
             env=env,
@@ -270,7 +281,8 @@ if __name__ == "__main__":
             state_dim=PARAMS["global_state_dim"],
             state_len=PARAMS["global_state_len"],
             action_dim=PARAMS["action_dim"],
+            machine_num=PARAMS["machine_num"],
             max_job_num=PARAMS["max_job_num"],
             job_file_path=PARAMS["data_path"] + PARAMS["job_name"],
         )
-        sr(env=env_sr, num_episodes=PARAMS["num_episodes"], output_path=k)
+        # sr(env=env_sr, num_episodes=PARAMS["num_episodes"], output_path=k)

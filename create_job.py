@@ -115,6 +115,7 @@ def create_cfjsp_same_job():
     with open("cfjsp_same.json", "w") as f:
         json.dump(job_list, f)
 
+
 def create_test_fjsp_same_job():
     """
     生成FJSP_DIFF数据集

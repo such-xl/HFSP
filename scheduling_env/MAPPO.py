@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.distributions import Categorical
 import random
 from .replay_buffer import PPOBuffer
-from .network import ActorNetwork, CriticNetwork,ActorNetwork_atten
+from .network import ActorNetwork, CriticNetwork, ActorNetwork_atten
 
 
 # 设置随机种子以确保可重复性
@@ -56,7 +56,7 @@ class MAPPOAgent:
         self.model_save_path = model_save_path
         # 创建策略网络和价值网络
         # self.actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
-        self.actor = ActorNetwork(obs_dim,act_dim,num_heads).to(device)
+        self.actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
         # 价值网络使用全局状态作为输入
         self.critic = CriticNetwork(global_state_dim).to(device)
         # 创建优化器
@@ -67,12 +67,16 @@ class MAPPOAgent:
         self.old_actor = ActorNetwork(obs_dim, act_dim, num_heads).to(device)
         self.old_actor.load_state_dict(self.actor.state_dict())
 
-    def select_action(self, obs, obs_mask, tau, hard,eval_mode=False):
-        obs_tensor = torch.as_tensor(obs,dtype=torch.float32).to(self.device).unsqueeze(0)
-        obs_mask_tensor = torch.as_tensor(obs_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
+    def select_action(self, obs, obs_mask, tau, hard, eval_mode=False):
+        obs_tensor = (
+            torch.as_tensor(obs, dtype=torch.float32).to(self.device).unsqueeze(0)
+        )
+        obs_mask_tensor = (
+            torch.as_tensor(obs_mask, dtype=torch.bool).to(self.device).unsqueeze(0)
+        )
         with torch.no_grad():
             action, log_prob, entropy = self.actor.get_action(
-                obs_tensor, obs_mask_tensor, tau, hard,eval_mode=eval_mode
+                obs_tensor, obs_mask_tensor, tau, hard, eval_mode=eval_mode
             )
         return action, log_prob.cpu().numpy(), entropy.cpu().numpy()
 
@@ -94,6 +98,7 @@ class MAPPOAgent:
         global_state,
         next_global_state,
         log_prob,
+        job_id,
         buffer,
     ):
         buffer.push(
@@ -107,12 +112,15 @@ class MAPPOAgent:
             global_state,
             next_global_state,
             log_prob,
+            job_id
         )
 
     def update_old_policy(self):
         self.old_actor.load_state_dict(self.actor.state_dict())
-    def update_last_reward(self,reward,buffer):
+
+    def update_last_reward(self, reward, buffer):
         buffer.update_last_reward(reward)
+
     # 添加2. 动作概率重整化函数
     def normalize_masked_probs(self, probs, mask):
         """将概率分布重新归一化，只考虑有效动作
@@ -128,6 +136,7 @@ class MAPPOAgent:
         # 确保无效动作概率为0
         normalized_probs = normalized_probs * valid_mask.float()
         return normalized_probs
+
     def masked_entropy(self, probs, mask):
         """只计算有效动作的熵
         mask: True代表无效/填充动作"""
@@ -143,6 +152,7 @@ class MAPPOAgent:
         valid_actions = valid_mask.float().sum(dim=-1)
         normalized_entropy = entropy / torch.clamp(valid_actions, min=1.0)
         return normalized_entropy
+
     # 添加6. 特殊处理 KL 散度函数
     def masked_kl_divergence(self, new_probs, old_probs, mask):
         """计算有效动作空间上的KL散度
@@ -152,35 +162,44 @@ class MAPPOAgent:
         # 只计算有效动作的KL散度
         masked_new_probs = new_probs * valid_mask.float()
         masked_old_probs = old_probs * valid_mask.float()
-        
+
         # 避免除零和log(0)问题
         eps = 1e-10
         ratio = torch.clamp(masked_new_probs / (masked_old_probs + eps), min=eps)
-        
+
         # 计算KL散度 (只在有效动作上)
         kl = masked_new_probs * torch.log(ratio)
         kl = torch.sum(kl, dim=-1)
-        
+
         # 根据有效动作数量归一化
         valid_actions = valid_mask.float().sum(dim=-1)
         normalized_kl = kl / torch.clamp(valid_actions, min=1.0)
-        
+
         return normalized_kl
+
     def compute_advantages(self, rewards, values, next_values, dones):
-        advantages = torch.zeros_like(rewards, dtype=torch.float32,device=self.device)
-        returns = torch.zeros_like(rewards, dtype=torch.float32,device=self.device)
-        gae = torch.tensor(0.0, dtype=torch.float32,device=self.device)
+        advantages = torch.zeros_like(rewards, dtype=torch.float32, device=self.device)
+        returns = torch.zeros_like(rewards, dtype=torch.float32, device=self.device)
+        gae = torch.tensor(0.0, dtype=torch.float32, device=self.device)
         for t in reversed(range(len(rewards))):
             if t == len(rewards) - 1:
                 next_value = next_values[t]
             else:
                 next_value = values[t + 1]
 
-            delta = rewards[t] + self.gamma * next_value * (1 - dones[t].to(torch.float32)) - values[t]
-            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t].to(torch.float32)) * gae
+            delta = (
+                rewards[t]
+                + self.gamma * next_value * (1 - dones[t].to(torch.float32))
+                - values[t]
+            )
+            gae = (
+                delta
+                + self.gamma * self.gae_lambda * (1 - dones[t].to(torch.float32)) * gae
+            )
             advantages[t] = gae
             returns[t] = advantages[t] + values[t]
         return advantages, returns
+
     # 添加7. 动态调整裁剪参数函数
     def adaptive_ppo_clip(self, mask, base_clip=0.2, min_clip=0.1, max_clip=0.3):
         """根据有效动作数量动态调整PPO裁剪参数
@@ -190,17 +209,17 @@ class MAPPOAgent:
         # 根据有效动作数量调整裁剪参数
         action_space_size = mask.size(-1)
         valid_action_count = valid_mask.float().sum(dim=-1)
-        
+
         # 有效动作比例
         valid_ratio = valid_action_count / action_space_size
-        
+
         # 根据有效动作比例调整裁剪参数
         # 有效动作越少，裁剪参数越小，限制更严格
         clip_param = self.eps_clip * (0.5 + 0.5 * valid_ratio)
         clip_param = torch.clamp(clip_param, min_clip, max_clip)
-        
+
         return clip_param
-    
+
     # 添加8. 动态调整学习率函数
     def adaptive_learning_rate(self, mask, base_lr=3e-4, min_lr=1e-5, max_lr=3e-3):
         """根据有效动作数量动态调整学习率
@@ -220,8 +239,8 @@ class MAPPOAgent:
         lr = torch.clamp(lr, min_lr, max_lr)
 
         return lr
-    
-    def update(self, buffer, batch_size=8, epochs=10,tau=0.1,hard=False):
+
+    def update(self, buffer, batch_size=8, epochs=10, tau=0.1, hard=False):
         if len(buffer) < batch_size:
             return 0, 0, 0  # 如果没有足够的样本，则不更新
 
@@ -239,20 +258,16 @@ class MAPPOAgent:
         old_log_prob_tensor = batch["log_probs"]
         # 计算当前价值估计
         with torch.no_grad():
-            values = (
-                self.critic(global_state_tensor)
-                .squeeze(-1)
-            )
-            next_values = (
-                self.critic(next_global_state_tensor)
-                .squeeze(-1)
-            )
+            values = self.critic(global_state_tensor).squeeze(-1)
+            next_values = self.critic(next_global_state_tensor).squeeze(-1)
 
         # 计算优势函数和回报
         advantages_tensor, returns_tensor = self.compute_advantages(
             reward_tensor, values, next_values, done_tensor
         )
-        returns_tensor = (returns_tensor - returns_tensor.mean()) / (returns_tensor.std() + 1e-8)
+        returns_tensor = (returns_tensor - returns_tensor.mean()) / (
+            returns_tensor.std() + 1e-8
+        )
         # 将优势和回报转换为张量
 
         # 标准化优势
@@ -283,19 +298,19 @@ class MAPPOAgent:
                 batch_advantage = advantages_tensor[batch_idx]
                 batch_return = returns_tensor[batch_idx]
                 batch_global_state = global_state_tensor[batch_idx]
-                action_mask = batch_obs_mask[:,:-1]
+                action_mask = batch_obs_mask[:, :-1]
                 # 计算当前策略的动作概率
                 logits = self.actor(batch_obs, batch_obs_mask)
                 logits = logits.masked_fill(action_mask, -1e9)
                 probs = F.softmax(logits, dim=-1)
                 assert not torch.isnan(probs).any(), "probs 有 NaN！"
-                normalized_probs = self.normalize_masked_probs(probs,action_mask)
+                normalized_probs = self.normalize_masked_probs(probs, action_mask)
 
                 # 使用重整化后的概率创建分布
                 dist = Categorical(normalized_probs)
                 curr_log_prob = dist.log_prob(batch_action)
 
-                entropy = self.masked_entropy(normalized_probs,action_mask).mean()
+                entropy = self.masked_entropy(normalized_probs, action_mask).mean()
 
                 # 计算重要性采样比率
                 ratio = torch.exp(curr_log_prob - batch_old_log_prob)
@@ -315,8 +330,12 @@ class MAPPOAgent:
                     old_logits = self.old_actor(batch_obs, batch_obs_mask)
                     old_logits = old_logits.masked_fill(action_mask, -1e9)
                     old_probs = F.softmax(old_logits, dim=-1)
-                    old_normalized_probs = self.normalize_masked_probs(old_probs,action_mask)
-                    kl_div = self.masked_kl_divergence(normalized_probs, old_normalized_probs, action_mask).mean()
+                    old_normalized_probs = self.normalize_masked_probs(
+                        old_probs, action_mask
+                    )
+                    kl_div = self.masked_kl_divergence(
+                        normalized_probs, old_normalized_probs, action_mask
+                    ).mean()
 
                 # 添加熵正则化
                 loss = (
@@ -352,15 +371,19 @@ class MAPPOAgent:
             actor_loss_epoch / n_updates,
             critic_loss_epoch / n_updates,
             entropy_epoch / n_updates,
-            kl_div_epoch / n_updates
+            kl_div_epoch / n_updates,
         )
+
     def save(self):
         print(self.model_save_path)
-        torch.save(self.actor.state_dict(),self.model_save_path)
-    def load(self,model_path):
+        torch.save(self.actor.state_dict(), self.model_save_path)
+
+    def load(self, model_path):
         state_dict = torch.load(model_path or self.model_save_path)
         self.actor.load_state_dict(state_dict)
         self.actor.eval()
+
+
 class AsyncMAPPO:
     def __init__(
         self,
@@ -416,11 +439,11 @@ class AsyncMAPPO:
         self.n_agents = n_agents
         self.device = device
 
-    def select_action(self, obs, obs_mask, tau=0.1, hard=False,eval_mode=False):
+    def select_action(self, obs, obs_mask, tau=0.1, hard=False, eval_mode=False):
         """为当前活动智能体选择动作"""
-        return self.agents.select_action(obs, obs_mask, tau, hard,eval_mode)
+        return self.agents.select_action(obs, obs_mask, tau, hard, eval_mode)
 
-    def update(self, batch_size=64, epochs=10,tau=0.1,hard=False):
+    def update(self, batch_size=64, epochs=10, tau=0.1, hard=False):
         total_actor_loss = 0
         total_critic_loss = 0
         total_entropy = 0
@@ -428,20 +451,19 @@ class AsyncMAPPO:
         buffer_indices = list(range(len(self.buffers)))
         np.random.shuffle(buffer_indices)
         for index in buffer_indices:
-            actor_loss, critic_loss, entropy,kl_div = self.agents.update(
+            actor_loss, critic_loss, entropy, kl_div = self.agents.update(
                 self.buffers[index], batch_size, epochs
             )
             total_actor_loss += actor_loss
             total_critic_loss += critic_loss
             total_entropy += entropy
             total_kl_div += kl_div
-            
 
         return (
             total_actor_loss / self.n_agents,
             total_critic_loss / self.n_agents,
             total_entropy / self.n_agents,
-            total_kl_div/ self.n_agents
+            total_kl_div / self.n_agents,
         )
 
     def store_experience(
@@ -457,6 +479,7 @@ class AsyncMAPPO:
         next_global_state,
         log_prob,
         agent_id,
+        job_id
     ):
         """存储当前活动智能体的经验"""
         self.agents.store_experience(
@@ -470,19 +493,25 @@ class AsyncMAPPO:
             global_state,
             next_global_state,
             log_prob,
-            self.buffers[agent_id],
+            job_id,
+            self.buffers[agent_id-1],
         )
-    def update_last_reward(self,rewards):
+
+    def update_last_reward(self, rewards):
         """更新最后一步的奖励"""
         for i in range(len(rewards)):
-            self.agents.update_last_reward(rewards[i],self.buffers[i])
-
+            self.agents.update_last_reward(rewards[i], self.buffers[i])
+    def update_reward(self,reward,jid):
+        for buffer in self.buffers:
+            buffer.update_reward(reward, jid)
     def evaluate_state(self, global_state, global_state_mask):
         """评估当前状态的价值（从指定智能体的角度）"""
         return self.agents.evaluate_state(global_state, global_state_mask)
+
     def save_model(self):
         """保存模型"""
         self.agents.save()
-    def load_model(self,model_path = None):
+
+    def load_model(self, model_path=None):
         """加载模型"""
         self.agents.load(model_path)
