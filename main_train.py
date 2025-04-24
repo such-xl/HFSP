@@ -19,6 +19,7 @@ def train_async_mappo(env, ppo, num_episodes=1000):
             'tradiness': [],
             'flow_time': [],
     }
+    
     for episode in range(num_episodes):
         actions = [0,0,0,0]
         locals_state= env.reset()
