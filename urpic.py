@@ -28,7 +28,6 @@ mean_ur_sr = savgol_filter(mean_ur_sr, window_length=110, polyorder=2)
 std_ur = savgol_filter(std_ur, window_length=110, polyorder=2)
 std_ur_sr = savgol_filter(std_ur_sr, window_length=110, polyorder=2)
 
-
 plt.figure(figsize=(10, 6))
 plt.plot(mean_ur, label="Mean UR by RL", color="blue", linestyle=":")
 plt.plot(mean_ur_sr, label="Mean UR by SR", color="red", linestyle="--")

@@ -4,10 +4,38 @@ from scheduling_env.job import Job
 from scheduling_env.machine import Machine
 INF = 1e9
 
+def CR(jobs: list[Job], machine_id: int,current_time:int) -> int:
+    """当前工序最短剩余时间优先"""
+    min_t = INF
+    action = -1
+    for i, job in enumerate(jobs):
+        if job.is_wating_for_machine() and job.match_machine(machine_id):
+            c_t = (job.due_time - current_time)/job.get_remaining_avg_time()
+        else:
+            continue
+        action,min_t = (i,c_t) if c_t < min_t else (action,min_t)
+    # if action < 0:
+    #     raise ValueError('Action is not valid(Action < 0)')
+    return action
+
+#最早截至日期优先
+def EDD(jobs: list[Job], machine_id: int) -> int:
+    """当前工序最早截止时间优先"""
+    min_t = INF
+    action = -1
+    for i, job in enumerate(jobs):
+        if job.is_wating_for_machine() and job.match_machine(machine_id):
+            c_t = job.due_time
+        else:
+            continue
+        action,min_t = (i,c_t) if c_t < min_t else (action,min_t)
+    # if action < 0:
+    #     raise ValueError('Action is not valid(Action < 0)')
+    return action
 
 def SPT(jobs: list[Job], machine_id: int) -> int:
     """当前工序最短处理时间优先"""
-    min_t = INFee
+    min_t = INF
     action = -1
     for i, job in enumerate(jobs):
         if job.is_wating_for_machine() and job.match_machine(machine_id):
@@ -35,7 +63,7 @@ def LPT(jobs: list[Job], machine_id: int) -> int:
     return action
 
 
-# 平均剩余最短处理时间优先
+# 作业剩余最短处理时间优先
 def SRPT(jobs: list[Job], machine_id: int) -> int:
     min_t = INF
     action = -1
@@ -64,33 +92,14 @@ def LRPT(jobs: list[Job], machine_id: int) -> int:
     #     raise ValueError('Action is not valid(Action < 0)')
     return action
 
-def noname(jobs: list[Job], machine:Machine,machines_UR:list[float]) -> Job:
-    available_jobs = []
-    for job in jobs:
-        if job.is_wating_for_machine() and job.match_machine(machine.id):
-            available_jobs.append(job)
-    available_jobs.sort(key = lambda job: job.get_t_process(machine.id))
-    avg_Ur = np.mean(machines_UR)
-    U = machines_UR[machine.id-1]
-    if U >= avg_Ur:
-        return available_jobs[0]
-    return available_jobs[-1]
-
-def noname_2(jobs,machine,machines_UR):
-    available_jobs = []
-    for job in jobs:
-        if job.is_wating_for_machine() and job.match_machine(machine.id):
-            available_jobs.append(job)
-
-    available_jobs.sort(key=lambda job: job.get_t_process(machine.id))
-    sorted_UR = machines_UR.copy()
-    sorted_UR.sort(reverse=True)
-    current_machine_ur = machines_UR[machine.id-1]
-    rank = sorted_UR.index(current_machine_ur)
-    percentile = rank / len(sorted_UR)
-    job_index = int(percentile * len(available_jobs))
-    return available_jobs[job_index]
-
-def random_action(jobs: list) -> int:
-    return random.randint(0, len(jobs))
+#随机
+def Random(jobs: list,machine_id: int) -> int:
+    """随机选择一个作业"""
+    job_index = []
+    action = -1
+    for i, job in enumerate(jobs):
+        if job.is_wating_for_machine() and job.match_machine(machine_id):
+            job_index.append(i)
+    action = random.choice(job_index) if len(job_index) > 0 else -1
+    return action
 

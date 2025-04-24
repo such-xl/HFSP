@@ -2,27 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.distributions import Categorical
-import numpy as np
-import random
-from collections import deque
 
-class ReplayBuffer:
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
-
-    def add(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
-
-    def sample(self, batch_size):
-        transitions = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*transitions)
-        return np.array(list(state)), action, reward, np.array(list(next_state)), done
-
-    def size(self):
-        return len(self.buffer)
-
-# Actor 网络
 class Actor(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(Actor, self).__init__()
@@ -37,113 +17,180 @@ class Actor(nn.Module):
             nn.Linear(input_dim // 2, output_dim),
         )
     
-    def forward(self, state):
-        probs = F.softmax(self.linear(state), dim=-1)
+    def forward(self, x):
+        x = self.linear(x)
+        x = F.softmax(x, dim=-1)  # Action probability distribution
+        return x
 
-        return Categorical(probs)
-        
-    
-# Critic 网络（多任务）
 class Critic(nn.Module):
     def __init__(self, input_dim):
         super(Critic, self).__init__()
-        self.shared = nn.Sequential(
-            nn.Linear(input_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
+
+        # CNN 提取局部特征
+        self.conv1 = nn.Conv1d(in_channels=input_dim, out_channels=32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+
+        # Transformer 提取全局特征
+        self.state_embedding = nn.Linear(64, 128)
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model=128, nhead=1, dim_feedforward=512, batch_first=True
+        )
+        self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
+
+        # 共享 MLP
+        self.shared_mlp = nn.Sequential(
+            nn.Linear(128, 64),
             nn.ReLU()
         )
-        self.critic_makespan = nn.Linear(128, 1)
-        self.critic_load_balance = nn.Linear(128, 1)
-        self.critic_energy = nn.Linear(128, 1)
-    
-    def forward(self, state):
-        shared_repr = self.shared(state)
-        return self.critic_makespan(shared_repr), self.critic_load_balance(shared_repr), self.critic_energy(shared_repr)
 
-class PPOAgent:
-    def __init__(self,obs_dim,obs_len,act_dim,global_state_dim,global_state_len,lr=3e-4, 
-                 gamma=0.99,buffer_capacity=10000,device=torch.device("cpu")):
-        self.obs_dim = obs_dim
-        self.obs_len = obs_len
-        self.act_dim = act_dim
-        self.global_state_dim = global_state_dim
-        self.global_state_len = global_state_len
-        self.lr = lr
+        # 任务特定 MLP
+        self.critic_U = nn.Linear(64, 1)  
+        self.critic_trad = nn.Linear(64, 1)  
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)  # 调整维度 [50, 10, 6] -> [50, 6, 10]
+        x = torch.relu(self.conv1(x))
+        x = torch.relu(self.conv2(x))
+        x = x.permute(0, 2, 1)  # 恢复维度 [50, 10, 64]
+
+        x = self.state_embedding(x)  
+        x = self.transformer_encoder(x)  
+        x = x.mean(dim=1)  
+
+        x = self.shared_mlp(x)
+        return self.critic_U(x), self.critic_trad(x)
+
+class PPO:
+    def __init__(
+            self,
+            local_state_dim,
+            local_state_len,
+            global_state_dim,
+            global_state_len,
+            act_dim,
+            lr,
+            gamma,
+            lmbda,
+            eps,
+            epochs,
+            weights,  # 权重参数
+            batch_size,
+            device=torch.device("cpu")
+            ):
         self.gamma = gamma
+        self.lmbda = lmbda
+        self.eps = eps
+        self.epochs = epochs 
+        self.batch_size = batch_size
         self.device = device
-        self.actor = Actor(global_state_dim*global_state_len,act_dim).to(device=device)
+        self.weights = torch.tensor(weights, dtype=torch.float).to(device)  # 添加权重参数
+        self.actor = Actor(local_state_dim*local_state_len, act_dim).to(device=device)
         self.critic = Critic(global_state_dim).to(device=device)
 
-        #创建优化器
-        self.optimizer_actor = optim.Adam(self.actor.parameters(),lr=lr)
-        self.optimizer_critic = optim.Adam(self.critic.parameters(),lr=lr)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr)
 
+        self.memory = {'local_state': [], 'global_state':[], 'actions': [], 'rewards': [], 'next_local_state': [],'next_global_state':[], 'dones': [], 'mask':[], 'next_mask':[]}
 
-    def take_action(self,state):
-        state_tensor = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-        with torch.no_grad():
-            dist = self.actor(state_tensor)
-            action = dist.sample()
-        return action
+    def take_action(self, state):
+        state = torch.tensor([state], dtype=torch.float).to(self.device)
+        probs = self.actor(state)
+        dist = torch.distributions.Categorical(probs)
+        action = dist.sample()
+        return action.item()
+    
+    def store_transition(self, local_state, global_state, action, reward, next_local_state, next_global_state, done, mask, next_mask):
+        self.memory['local_state'].append(local_state)
+        self.memory['global_state'].append(global_state)
+        self.memory['actions'].append(action)
+        self.memory['rewards'].append(reward)
+        self.memory['next_local_state'].append(next_local_state)
+        self.memory['next_global_state'].append(next_global_state)
+        self.memory['dones'].append(done)
+        self.memory['mask'].append(mask)
+        self.memory['next_mask'].append(next_mask)
     
 
-    def update(self,batch):
-        # **从缓冲区采样**
+    def compute_advantage(self, td_delta):
+        advantage = [] 
+        adv = 0.0
+        for delta in reversed(td_delta):
+            adv = delta + self.gamma * self.lmbda * adv
+            advantage.insert(0, adv)
+        return torch.tensor(advantage, dtype=torch.float).to(self.device)
+    
+    def update(self):
+        local_state = torch.tensor(self.memory['local_state'], dtype=torch.float).to(self.device)
+        global_state = torch.tensor(self.memory['global_state'], dtype=torch.float).to(self.device)
+        actions = torch.tensor(self.memory['actions']).view(-1, 1).to(self.device)
+        rewards = torch.tensor(self.memory['rewards'], dtype=torch.float32, device=self.device)  # 2个目标
+        next_local_state = torch.tensor(self.memory['next_local_state'], dtype=torch.float).to(self.device)
+        next_global_state = torch.tensor(self.memory['next_global_state'], dtype=torch.float).to(self.device)
+        dones = torch.tensor(self.memory['dones'], dtype=torch.float32, device=self.device)
+        mask = torch.tensor(self.memory['mask'], dtype=torch.bool).to(self.device)
+        next_mask = torch.tensor(self.memory['next_mask'], dtype=torch.bool).to(self.device)
+        # rewards_U = rewards[:, 0]
+        # rewards_Trad = rewards[:, 1]
 
-        states, actions, rewards, next_states, dones = batch
+        old_log_probs = torch.log(self.actor(local_state).gather(1, actions)).detach()
         
-        states = torch.FloatTensor(states).to(self.device)
-        actions = torch.FloatTensor(actions).to(self.device)
-        rewards = torch.FloatTensor(rewards).to(self.device)
-        next_states = torch.FloatTensor(next_states).to(self.device)
-        dones = torch.FloatTensor(dones).to(self.device)
-        # print(states.shape)
-        # 计算 Critic 目标值
-        value_makespan, value_load_balance, value_energy = self.critic(states)
-        next_value_makespan, next_value_load_balance, next_value_energy = self.critic(next_states)
+        with torch.no_grad():
+            value_U, value_Trad = self.critic(global_state)
+            value_next_U, value_next_Trad = self.critic(next_global_state)
+            value_U = value_U.squeeze(-1)
+            value_Trad = value_Trad.squeeze(-1)
+            value_next_U = value_next_U.squeeze(-1)
+            value_next_Trad = value_next_Trad.squeeze(-1)
         
-        value_makespan = next_value_makespan.max(dim=1)[0].squeeze(-1)
-        value_load_balance = next_value_load_balance.mean(dim=1)[0].squeeze(-1)
-        value_energy = next_value_energy.max(dim=1)[0].squeeze(-1)
-        next_value_makespan = next_value_makespan.max(dim=1)[0].squeeze(-1)
-        next_value_load_balance = next_value_load_balance.max(dim=1)[0].squeeze(-1)
-        next_value_energy = next_value_energy.max(dim=1)[0].squeeze(-1)
+         # 计算 两个目标 TD 目标值
+        td_target_U = rewards + self.gamma*value_next_U*(1-dones)
+        td_target_Trad = rewards + self.gamma*value_next_Trad*(1-dones)
+        advantage = self.compute_advantage(td_target_U - value_U) 
+        # advantage_Trad = self.compute_advantage(td_target_Trad - value_Trad) 
+        #动态调整权重
 
-        target_makespan = rewards + self.gamma * next_value_makespan.squeeze() * (1 - dones)
-        target_load_balance = rewards + self.gamma * next_value_load_balance.squeeze() * (1 - dones)
-        target_energy = rewards + self.gamma * next_value_energy.squeeze() * (1 - dones)
+        # total_adv = abs(advantage_U.mean()) + abs(advantage_Trad.mean()) +1e-8
+        # weight_U = abs(advantage_U.mean()) / total_adv
+        # weight_Trad = abs(advantage_Trad.mean()) / total_adv
+        # advantage = weight_U * advantage_U + weight_Trad * advantage_Trad
+        # advantage =  self.weights[0] * advantage_U + self.weights[1] * advantage_Trad 
+        advantage = (advantage - advantage.mean())/(advantage.std() + 1e-8)
 
-        # **计算加权 Advantage**
-        total_advantage = (
-            0.5 * (target_makespan - value_makespan.squeeze()).detach() +
-            0.3 * (target_load_balance - value_load_balance.squeeze()).detach() +
-            0.2 * (target_energy - value_energy.squeeze()).detach()
-        )
+        actor_loss_epochs = 0
+        loss_U_epochs = 0
+        loss_trad_epochs = 0
+        for _ in range(self.epochs):
+            log_probs = torch.log(self.actor(local_state).gather(1, actions))
+            ratio = torch.exp(log_probs - old_log_probs)
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage
+            actor_loss = torch.mean(-torch.min(surr1, surr2))
 
-        # **计算 Actor 损失**
-        action_probs = self.actor(states)
-        action_log_probs = torch.log(action_probs.gather(1, actions.unsqueeze(1)))
-        ratio = torch.exp(action_log_probs - action_log_probs.detach())
+            value_U, value_Trad = self.critic(global_state)
+            value_U = value_U.squeeze(-1)
+            # value_Trad = value_Trad.squeeze(-1)
+            
+            loss_fn = nn.MSELoss()
+            loss_U = loss_fn(value_U, td_target_U.detach())
+            # loss_Trad = loss_fn(value_Trad, td_target_Trad.detach())
+            
 
-        loss_actor = -torch.min(
-            ratio * total_advantage,  
-            torch.clamp(ratio, 1 - self.epsilon, 1 + self.epsilon) * total_advantage
-        ).mean()
-
-        # **计算 Critic 损失**
-        loss_critic = (target_makespan - value_makespan.squeeze()).pow(2).mean() + \
-                      (target_load_balance - value_load_balance.squeeze()).pow(2).mean() + \
-                      (target_energy - value_energy.squeeze()).pow(2).mean()
-
-        # **更新网络**
-        self.optimizer_actor.zero_grad()
-        loss_actor.backward()
-        self.optimizer_actor.step()
-
-        self.optimizer_critic.zero_grad()
-        loss_critic.backward()
-        self.optimizer_critic.step()
-
-        return loss_actor.item(), loss_critic.item()
-       
+            actor_loss_epochs += actor_loss.item()
+            loss_U_epochs += loss_U.item()
+            # loss_trad_epochs += loss_Trad.item()
+            
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            actor_loss.backward()
+            loss_U.backward(retain_graph=True)
+            # loss_Trad.backward()
+            # critic_loss.backward()
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
+        
+        # 更新旧策略
+        self.actor.load_state_dict(self.actor.state_dict())
+        
+        self.memory = {'local_state': [], 'global_state':[], 'actions': [], 'rewards': [], 'next_local_state': [],'next_global_state':[], 'dones': [], 'mask':[], 'next_mask':[]}
+        
+        return (actor_loss_epochs/self.epochs, loss_U/self.epochs, loss_trad_epochs/self.epochs)

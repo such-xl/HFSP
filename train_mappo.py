@@ -147,8 +147,6 @@ PARAMS = {
     "action_dim": 5,
     "max_machine_num": 20,
     "max_job_num": 10,
-    "share_parameters": False,
-    "num_heads": 6,
     "device": (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     ),
@@ -167,22 +165,22 @@ mappo = AsyncMAPPO(
     global_state_dim=PARAMS["global_state_dim"],
     global_state_len=PARAMS["global_state_len"],
     act_dim=PARAMS["action_dim"],
-    lr=PARAMS["learning_rate"],
+    # lr=PARAMS["learning_rate"],
     gamma=PARAMS["gamma"],
-    share_parameters=PARAMS["share_parameters"],
+    # share_parameters=PARAMS["share_parameters"],
     num_heads=PARAMS["num_heads"],
     device=PARAMS["device"],
 )
 
-train_async_mappo(
-    env=env,
-    mappo=mappo,
-    num_episodes=PARAMS["num_episodes"],
-    batch_size=PARAMS["batch_size"],
-    epochs=10,
-    max_steps=200,
-)
-# scheduling_algotithm(
+# train_async_mappo(
 #     env=env,
+#     mappo=mappo,
 #     num_episodes=PARAMS["num_episodes"],
+#     batch_size=PARAMS["batch_size"],
+#     epochs=10,
+#     max_steps=200,
 # )
+scheduling_algotithm(
+    env=env,
+    num_episodes=PARAMS["num_episodes"],
+)
