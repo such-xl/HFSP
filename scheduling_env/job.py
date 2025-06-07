@@ -7,6 +7,7 @@ class JobStatus(Enum):
     IDLE = 1
     RUNNING = 2
 
+
 class Job(Node):
     def __init__(
         self, id: int, process_num: int, process_list: list, insert_time: int
@@ -24,11 +25,11 @@ class Job(Node):
         self._machine = None  # 正在加工该job的机器id，0表示目前没有被加工
         self._t_process = 0  # 当前工序需被加工的时间
         self._t_processed = 0  # 当前工序已经被加工时间
-        self.due_time = 0 #作业的截至日期
-        self.completed_time = 0 #作业的完成时间
+        self.completed_time = 0  # 作业的完成时间
         self._insert_time = insert_time  # 作业插入时间
-        self.all_process_time = self.get_sum_process_time() #作业的所有工序加工时间
-        
+        self.due_time = 0  # 作业的截至日期
+        self.all_process_time = self.get_sum_process_time()  # 作业的所有工序加工时间
+        self.job_slack_time = self.due_time - self.all_process_time - self._insert_time
 
     def get_state_code(self):
         """
@@ -45,12 +46,10 @@ class Job(Node):
                 if self._status == JobStatus.COMPLETED
                 else self.current_progress_remaining_time()
             ),
-            
         ]
 
     def op_complete_ratio(self):
         return (self._progress - 1) / self._process_num
-
 
     def get_t_process(self, machine_id):
         """
@@ -78,7 +77,7 @@ class Job(Node):
         self._status = JobStatus.RUNNING
         self._rest = time_step
 
-    def unload_machine(self,time_step):
+    def unload_machine(self, time_step):
         """将job从machine卸载"""
         if self._status != JobStatus.RUNNING:
             raise ValueError("job is not running")
@@ -98,10 +97,7 @@ class Job(Node):
             else JobStatus.IDLE
         )
         self.completed_time = (
-            time_step
-            if self._progress == self._process_num + 1
-            else 0
-
+            time_step + 1 if self._progress == self._process_num + 1 else 0
         )
 
     def is_completed(self):
@@ -115,8 +111,7 @@ class Job(Node):
     def is_on_processing(self):
         """判断是否正在加工"""
         return self._status == JobStatus.RUNNING
-    
-    
+
     def run(self, min_run_timestep, time_step):
         """执行min_run_timestep 时序"""
         self._t_processed += min_run_timestep
@@ -154,64 +149,65 @@ class Job(Node):
 
     def get_remaining_avg_time(self):
         """获取平均剩余加工时间"""
-        if self._status == JobStatus.COMPLETED:
-            raise ValueError("job is completed")
         reminder = 0
-        if self._status == JobStatus.IDLE:
+        if self._status == JobStatus.COMPLETED:
+            reminder = 0
+        elif self._status == JobStatus.IDLE:
             reminder = sum(self._process_list[self._progress - 1].values()) / len(
                 self._process_list[self._progress - 1].values()
             )
         else:
             reminder = self._t_process - self._t_processed
-
         reminder_progress = self._process_list[self._progress :]
+
         for p in reminder_progress:
             reminder += sum(p.values()) / len(p.values())
-        if reminder <= 0:
-            raise ValueError("reminder is negative or zero")
+
         return reminder
-    
+
     def get_wait_time(self, time_step):
-        #如果作业完成了，等待时间就不变
+        # 如果作业完成了，等待时间就不变
         if self._status == JobStatus.COMPLETED:
             return self.wait_time
         else:
             self.wait_time = time_step - self._busy_time - self._insert_time
             return self.wait_time
-        
-    def get_job_idle_time_ratio(self,time_step):
-        #如果作业完成了，空闲率就不变
+
+    def get_job_idle_time_ratio(self, time_step):
+        # 如果作业完成了，空闲率就不变
         self.get_wait_time(time_step)
         if self._status == JobStatus.COMPLETED:
             return self.idle_time_ratio
         else:
-            self.idle_time_ratio = self.wait_time /(self.due_time + 1e-8)
+            self.idle_time_ratio = self.wait_time / (self.due_time + 1e-8)
             return self.idle_time_ratio
 
     def get_sum_process_time(self):
         time = 0
         for p in self._process_list:
-            time += sum(p.values())/len(p.values())
-        self.due_time = int(1.2 * time) +self._insert_time
+            time += sum(p.values()) / len(p.values())
+        self.due_time = int(1.2 * time) + self._insert_time
         return time
-    
+
     def get_e_trad_time(self, time_step):
-        #剩余操作的加工时间+当前时间-截至日期
+        # 剩余操作的加工时间+当前时间-截至日期
         if self._status == JobStatus.COMPLETED:
-            return self.tardiness
+            self.tardiness = 0
         else:
-            self.tardiness = max(self.get_remaining_avg_time() + time_step - self.due_time, 0)
+            self.tardiness = self.get_remaining_avg_time()
+
         return self.tardiness
-        
-    def get_slack_ratio (self):
-        ratio = 0
+
+    def slack_time(self, time_step):
+
         if self._status == JobStatus.COMPLETED:
-            ratio = (self.due_time - self.completed_time)/(self.completed_time + 1e-8)
+            return self.job_slack_time * 1.0
         else:
-            remaining_time = self.get_remaining_avg_time()
-            ratio = (self.due_time - remaining_time) / (self.due_time + 1e-8)
-        return ratio
-    
+            self.job_slack_time = (
+                self.due_time - time_step - self.get_remaining_avg_time()
+            )
+        return self.job_slack_time * 1.0
+
     @property
     def id(self):
         return self._id

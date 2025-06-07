@@ -35,12 +35,6 @@ class Machine(Node):
             return 0
         if self._status == MachineStatus.RUNNING:
             return 1
-        # if self._status == MachineStatus.IDLE:
-        #     return self._state[0]
-        # if self._status == MachineStatus.RUNNING:
-        #     return self._state[1]
-        # if self._status == MachineStatus.FAULT:
-        #     return self._state[3]
         return self._state
 
     def get_bin_code(self):

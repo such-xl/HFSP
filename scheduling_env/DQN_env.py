@@ -9,6 +9,7 @@ import numpy as np
 from .job import Job, JobList, fetch_job_info
 from .machine import Machine, MachineList
 from .basic_scheduling_algorithms import SPT, SRPT, LPT, LRPT
+
 job_rng = random.Random(42)
 np.random.seed(42)
 
@@ -53,7 +54,10 @@ class TrainingEnv:
         return job_ids
 
     def insert_job(self):
-        while self.job_num < len(self.job_arriavl_time) and self._time_step == self.job_arriavl_time[self.job_num]:
+        while (
+            self.job_num < len(self.job_arriavl_time)
+            and self._time_step == self.job_arriavl_time[self.job_num]
+        ):
             job = next(
                 (
                     j
@@ -87,8 +91,8 @@ class TrainingEnv:
             return False
 
         for job in self._job_list:
-           if job.is_wating_for_machine() and job.match_machine(machine.id):
-                return True 
+            if job.is_wating_for_machine() and job.match_machine(machine.id):
+                return True
         return False
 
     def get_decsion_machines(self):
@@ -130,8 +134,7 @@ class TrainingEnv:
         self.U_ave_end = 0
         obs = self.get_obs()
         return obs
-    
-    
+
     def run(self):
         """
         所有忙碌agent和job更新一个time_step,使得必产生空闲机器
@@ -148,7 +151,7 @@ class TrainingEnv:
             machine.run(min_run_timestep, self._time_step)
             machine = machine.next
         self._time_step += min_run_timestep
-        
+
         if self.job_num < self._max_job_num:
             self.insert_job()
         done = True
@@ -163,7 +166,6 @@ class TrainingEnv:
         ):  # 没有结束且没有空闲机器，继续
             done, truncated = self.run()
         return done, truncated
-
 
     def step(self, action):
         if action == 0:
@@ -201,16 +203,16 @@ class TrainingEnv:
 
         self.U_ave_end = self.U_ave
         self.tradness_ave_end = self.tradness_ave
-        
+
         if not done and not truncated:
             decision_machines = self.get_decsion_machines()
             self._current_machine = decision_machines[0]
-            local_state= self.get_obs()
+            local_state = self.get_obs()
         else:
             local_state = self.get_obs()
 
         return local_state, reward, done, truncated
-    
+
     def is_any_machine_need_to_decision(self):
         machine: Machine = self._machines.head
         while machine:
@@ -218,12 +220,14 @@ class TrainingEnv:
                 return True
             machine = machine.next
         return False
-    
+
     def get_obs(self):
         current_machine_u, u_std, u_mean = self.compute_machine_utiliaction()
-        job_complete_mean,job_complete_std = self.get_job_state()
+        job_complete_mean, job_complete_std = self.get_job_state()
         tradness_mean = self.compute_job_trad()
-        available_job_num = len([job for job in self._job_list if job.is_wating_for_machine()])
+        available_job_num = len(
+            [job for job in self._job_list if job.is_wating_for_machine()]
+        )
         obs = [
             current_machine_u,
             u_std,
@@ -233,35 +237,36 @@ class TrainingEnv:
             tradness_mean,
         ]
         return obs
-    
+
     def compute_machine_utiliaction(self):
 
-        c_m_u =  self._current_machine.get_utilization_rate(self._time_step) #当前机器的利用率
+        c_m_u = self._current_machine.get_utilization_rate(
+            self._time_step
+        )  # 当前机器的利用率
         utiliaction_rate = [
-            machine.get_utilization_rate(self._time_step) for machine in self._machine_list
+            machine.get_utilization_rate(self._time_step)
+            for machine in self._machine_list
         ]
-        u_std =  np.std(utiliaction_rate)
+        u_std = np.std(utiliaction_rate)
         u_mean = sum(utiliaction_rate) / self._machine_num
 
-        return c_m_u, u_std, u_mean 
-    
+        return c_m_u, u_std, u_mean
+
     def get_job_state(self):
-        ratio_op =  [self._job_list[i].op_complete_ratio()
-                if i < len(self._job_list)
-                else 0
-                for i in range(self._max_job_num)
-            ]    
+        ratio_op = [
+            self._job_list[i].op_complete_ratio() if i < len(self._job_list) else 0
+            for i in range(self._max_job_num)
+        ]
         mean = np.mean(ratio_op)
         std = np.std(ratio_op)
-        return mean,std
-    
+        return mean, std
+
     def compute_job_trad(self):
         for job in self._job_list:
             self.tradness[job.id - 1] = job.get_trad_time(self._time_step)
         mean_trad = np.mean(self.tradness)
 
         return mean_trad
-
 
     def compute_single_reward(self, agent_id, lamda_1=0, lamda_2=1):
         """
@@ -281,7 +286,6 @@ class TrainingEnv:
         ]
         return utiliaction_rates
 
-    
     @property
     def action_space(self):
         return self._action_space
@@ -293,4 +297,3 @@ class TrainingEnv:
     @property
     def time_step(self):
         return self._time_step
-

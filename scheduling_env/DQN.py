@@ -8,11 +8,13 @@ import random
 from collections import deque
 
 import matplotlib.pyplot as plt
+
 # from tqdm import tqdm
 
 
 class Qnet(torch.nn.Module):
-    ''' 只有一层隐藏层的Q网络 '''
+    """只有一层隐藏层的Q网络"""
+
     def __init__(self, state_dim, action_dim):
         super(Qnet, self).__init__()
         self.net = nn.Sequential(
@@ -20,15 +22,25 @@ class Qnet(torch.nn.Module):
             nn.ReLU(),
             nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(128, action_dim)
+            nn.Linear(128, action_dim),
         )
 
     def forward(self, x):
         return self.net(x)
-    
+
+
 class DQN:
-    ''' DQN算法,包括Double DQN '''
-    def __init__(self, state_dim, action_dim, gamma=0.99, lr=1e-3, batch_size=128, memory_size=10000):
+    """DQN算法,包括Double DQN"""
+
+    def __init__(
+        self,
+        state_dim,
+        action_dim,
+        gamma=0.99,
+        lr=1e-3,
+        batch_size=128,
+        memory_size=10000,
+    ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.state_dim = state_dim
         self.action_dim = action_dim
