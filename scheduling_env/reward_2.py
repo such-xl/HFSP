@@ -10,8 +10,8 @@ class AsyncTardinessReward:
         w_local=0.4,
         w_global=0.6,
         w_tardiness_rate=0,
-        w_tardiness_time=0.1,
-        history_length=600,
+        w_tardiness_time=0.01,
+        history_length=1000,
         decay_factor=0.95,
         urgency_factor=3.0,
     ):
@@ -64,7 +64,7 @@ class AsyncTardinessReward:
         self.last_system_update = 0
 
     def normalize_reward(self, reward, scale=0.01):
-        """使用sigmoid函数将奖励归一化到[-1,1]范围"""
+
         normalized = -np.log1p(reward)
         return normalized
 

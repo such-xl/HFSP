@@ -5,7 +5,7 @@ from gymnasium import spaces
 from .job import Job, JobList
 import json
 from .machine import Machine
-from .basic_scheduling_algorithms import EDD, MS, SRO, CR, SRPT, FIFO, ATC,PDR_RULES
+from .basic_scheduling_algorithms import EDD, MS, SRO, CR, SRPT, FIFO, ATC,PDR_RULES,LPT,SPT
 from .reward_2 import AsyncTardinessReward
 
 
@@ -31,7 +31,7 @@ class TrainingEnv(gym.Env):
         self.rng = np.random.RandomState(self.seed_list[self.eps_num])
         self.lambda_rate = lambda_rate
         self.reward_calculator = None
-        self.action_space = spaces.Discrete(4)
+        self.action_space = spaces.Discrete(action_dim)
         self.observation_space = spaces.Box(
             low=0, high=1, shape=(state_dim,), dtype=np.float32
         )
@@ -50,9 +50,9 @@ class TrainingEnv(gym.Env):
                         job["process_list"].index(process)
                     ] = new_process
             
-        # self.job_arrivals = self.create_job_arriavl_seq(self.lambda_rate)
+            self.job_arrivals = self.create_job_arriavl_seq(self.lambda_rate)
 
-    def create_job_arriavl_seq(self, lambda_rate=0.12):
+    def create_job_arriavl_seq(self, lambda_rate=0.1):
         """
         生成指数分布的间隔时间，并取整
         """
@@ -70,8 +70,10 @@ class TrainingEnv(gym.Env):
                 job,
                 time,
                 int(
+                    int ( 
                     sum(sum(d.values()) / len(d) for d in job["process_list"])
-                    * (1.5-self.lambda_rate)
+                    * self.rng.uniform(1.2,1.5)
+                    )
                     + time
                 ),
             )
@@ -123,9 +125,10 @@ class TrainingEnv(gym.Env):
         decision_machines = [
             machine for machine in self.machines if self.is_decision_machine(machine)
         ]
-        index = self.rng.randint(0, len(decision_machines))
-        return decision_machines[index]
+        # index = self.rng.randint(0, len(decision_machines))
+        # index = int(self.rng.random() * len(decision_machines))
         # return decision_machines[0]
+        return self.rng.choice(decision_machines)
 
     def get_available_jobs(self):
         """
@@ -154,7 +157,7 @@ class TrainingEnv(gym.Env):
         self.eps_num += 1
         self.count_actions = [0 for _ in range(self.action_dim)]
         self.rng = np.random.RandomState(self.seed_list[self.eps_num])
-        self.job_arrivals = self.create_job_arriavl_seq(self.lambda_rate)
+        # self.job_arrivals = self.create_job_arriavl_seq(self.lambda_rate)
         self.machines = [Machine(i) for i in range(1, self.machine_num + 1)]
         self.uncomplete_job = JobList()
         self.complete_job = JobList()
@@ -173,20 +176,20 @@ class TrainingEnv(gym.Env):
         """
         ranked_job0 = EDD(self.available_jobs,self.time_step,self.current_machine.id)[0]
         ranked_job1 = CR(self.available_jobs, self.time_step,self.current_machine.id)[0]
-        ranked_job2 = SRO(self.available_jobs, self.time_step,self.current_machine.id)[0]
-        ranked_job3 = ATC(self.available_jobs, self.time_step,self.current_machine.id)[0]
-
-        ranked_job4 = MS(self.available_jobs, self.time_step,self.current_machine.id)[0]
-        update_avi_jobs = [ranked_job0, ranked_job1, ranked_job2, ranked_job3,ranked_job4]
+        # ranked_job2 = SRPT(self.available_jobs, self.time_step, self.current_machine.id)[0]
+        ranked_job3 = MS(self.available_jobs, self.time_step, self.current_machine.id)[0]
+        ranked_job4 = SRO(self.available_jobs, self.time_step,self.current_machine.id)[0]
+        ranked_job2 = SPT(self.available_jobs, self.time_step,self.current_machine.id)[0]
+        # ranked_job7 = MS(self.available_jobs, self.time_step,self.current_machine.id)[0]
+        update_avi_jobs = [ranked_job0, ranked_job1, ranked_job2,ranked_job3,ranked_job4]
         unique_count = len(set(id(obj) for obj in update_avi_jobs))
-        self.count_actions[unique_count - 1] += 1
         obs_i = []
         for (
             i,
             job,
         ) in enumerate(update_avi_jobs):
             code1 = job.get_state_code(self.time_step)
-            code2 = [1 if j == i else 0 for j in range(4)]
+            code2 = [1 if j == i else 0 for j in range(self.action_dim)]
             code = code1 + code2
             obs_i.extend(code)
         self.available_jobs = update_avi_jobs
@@ -216,8 +219,6 @@ class TrainingEnv(gym.Env):
         for machine in self.machines:
             if not machine.is_running():
                 continue
-            job = machine.job
-
             machine.run(min_run_timestep, self.time_step)
 
         self.time_step += min_run_timestep
@@ -250,6 +251,7 @@ class TrainingEnv(gym.Env):
     def step(self, action):
         self.current_machine.load_job(self.available_jobs[action], self.time_step)
         self.current_machine.update_decision_time(self.time_step)
+        self.count_actions[action] += 1
         done, truncated, info = False, False, {}
         if (
             not self.is_any_machine_need_to_decision()

@@ -5,23 +5,10 @@ import json
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize,SubprocVecEnv
 from scheduling_env.eval_env import JSPEvalEnv
+from params import PARAMS
 
-
-MODEL_SAVE_PATH = "./models/lambda12"
+MODEL_SAVE_PATH = "./models/num_25_50"
 MODEL_FULL_PATH = MODEL_SAVE_PATH + ".zip"
-
-PARAMS = {
-    "max_machine_num": 10,
-    "max_job_num": 28,
-    "state_dim": 41,
-    "action_dim" : 4,
-    "machine_num":10,
-    "data_path": os.path.dirname(os.path.abspath(__file__))
-    + "/experiment/jsp/job_data/",
-    "UR": [70, 80, 90],
-    "SR": ["EDD", "MS", "SRO", "CR","ATC"],
-    "seed_list" : np.random.RandomState(42).randint(0, 1e6, size=1000000)
-}
 
 if __name__ == "__main__":
 
@@ -40,8 +27,9 @@ if __name__ == "__main__":
     env_fns = [make_env(0)]
     
     env = DummyVecEnv(env_fns)
-    env = VecNormalize.load("./models/lambda12.pkl", env)
+    env = VecNormalize.load(MODEL_SAVE_PATH+".pkl", env)
     env.training = False
+    env.norm_obs = False
 
     try:
         model = PPO.load(MODEL_FULL_PATH, env=env, device="cuda")  # 或 "cpu"
@@ -50,10 +38,8 @@ if __name__ == "__main__":
         print(f"加载模型失败: {e}")
         exit()
     tards_records = {}
-    for ur in PARAMS["UR"]:
-        tards_records[ur] = {
-            "RL": []
-        }
+    for ur in [70,80,90]:
+        tards_records[ur] = []
     obs = env.reset()
     for eps in range(300):
         print("===")
@@ -63,6 +49,6 @@ if __name__ == "__main__":
             action,_state = model.predict(obs,deterministic=True)
             obs,reward,done,info = env.step(action)
             if done[0]:
-                tards_records[PARAMS["UR"][eps//100]]["RL"].append(info[0]['tardiness'])
+                tards_records[70+(eps//100)*10].append(info[0]['tardiness'])
     with open("experiment/jsp/resurt_all.json", "w") as f:
         json.dump(tards_records, f)

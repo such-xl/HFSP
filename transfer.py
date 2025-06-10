@@ -1,24 +1,22 @@
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize,SubprocVecEnv
 import numpy as np
-import pandas as pd
 from scheduling_env.training_env import TrainingEnv
+from scheduling_env.fjsp_eval_env import TRAN_ENV
 from params import PARAMS
 from scheduling_env.basic_scheduling_algorithms import PDR_RULES
-MODEL_SAVE_PATH = "./models/num_25_50_70_300"
+MODEL_SAVE_PATH = "./models/num_25_50"
 MODEL_FULL_PATH = MODEL_SAVE_PATH +".zip"
 
 
 if __name__ == "__main__":
     result = []
-    mean_value = []
-    std_value = []
     def make_env(i):
         def _init():
-            return TrainingEnv(
+            return TRAN_ENV(
                 state_dim=PARAMS["state_dim"],
                 action_dim=PARAMS["action_dim"],
-                machine_num=PARAMS["machine_num"],
+                machine_num=12,
                 max_job_num = PARAMS["max_job_num"][i],
                 lambda_rate = PARAMS["lambda_rate"][i],
                 job_file_path = PARAMS["fjsp_same_path"],
@@ -59,10 +57,10 @@ if __name__ == "__main__":
         for pdr in range(len(PDR_RULES)):
             method = PDR_RULES[pdr]
             # print(f"Testing PDR: {method.__name__}")
-            env = TrainingEnv(
+            env = TRAN_ENV(
                 state_dim=PARAMS["state_dim"],
                 action_dim=PARAMS["action_dim"],
-                machine_num=PARAMS["machine_num"],
+                machine_num=15,
                 max_job_num = PARAMS["max_job_num"][i],
                 lambda_rate = PARAMS["lambda_rate"][i],
                 job_file_path = PARAMS["fjsp_same_path"],
@@ -75,32 +73,23 @@ if __name__ == "__main__":
                     _, _, done,_, info = env.step_by_sr(pdr)
                     if done:
                         all_episode_tardiness_sums[pdr+1].append(np.sum(info["tardiness"]))
-        mean_value.append(np.mean(all_episode_tardiness_sums,axis=1))
-        std_value.append(np.std(all_episode_tardiness_sums, axis=1))
-
-    mean_value = np.array(mean_value)
-    std_value = np.array(std_value)
-    # parameter_labels = [f"jobs={PARAMS['max_job_num'][i]}" 
-    #                    for i in range(len(PARAMS['max_job_num']))]
-    parameter_labels = [f"jobs={i}" for i in PARAMS['max_job_num']]
-    existing_mean_df = pd.read_excel('RL_PRDs.xlsx', sheet_name='Mean Values')
-    existing_std_df = pd.read_excel('RL_PRDs.xlsx', sheet_name='Standard Deviation')
+        result.append(np.mean(all_episode_tardiness_sums,axis=1))
+    result = np.array(result)/np.array(PARAMS["max_job_num"]).reshape(-1,1)
+    print(result)
+    print(result.min(axis=1))
+    print(np.sum(action_counts,axis=0))
+    parameter_labels = [f"λ={PARAMS['lambda_rate'][i]}, jobs={PARAMS['max_job_num'][i]}" 
+                       for i in range(len(PARAMS['max_job_num']))]
+    
     # 创建DataFrame
     # 第一列是参数说明，后面的列是各个方法的结果
     data = {'Parameters': parameter_labels}
-    data_std = {'Parameters': parameter_labels}
-    data_mean = {'Parameters': parameter_labels}
-
+    
+    # 添加每个方法的结果作为列
     for i, method_name in enumerate(methods):
-        data_mean[method_name] = mean_value[:, i]
-        data_std[method_name] = std_value[:, i]
-    df_mean = pd.DataFrame(data_mean)
-    df_std = pd.DataFrame(data_std)
-
+        data[method_name] = result[:, i]
+    import pandas as pd
     df = pd.DataFrame(data)
-    combined_mean_df = pd.concat([existing_mean_df, df_mean], ignore_index=True)
-    combined_std_df = pd.concat([existing_std_df, df_std], ignore_index=True)
-# 写入Excel文件的不同工作表
-    with pd.ExcelWriter('RL_PDRS.xlsx') as writer:
-        combined_mean_df.to_excel(writer, sheet_name='Mean Values', index=False)
-        combined_std_df.to_excel(writer, sheet_name='Standard Deviation', index=False)
+    
+    # 保存到Excel
+    df.to_excel('results.xlsx', index=False)
