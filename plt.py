@@ -8,7 +8,7 @@ from scipy.signal import savgol_filter
 def print_filter(data):
     # kernel_size = 30
     # return np.convolve(data, np.ones(kernel_size)/kernel_size, mode='valid')
-    return savgol_filter(data, window_length=55,polyorder=3)
+    return savgol_filter(data, window_length=33,polyorder=3)
     return data
 
 
@@ -28,8 +28,8 @@ colors = {
 def read_json(name):
     if name == "RL":
         with open(
-           f"HFSD/record/record_{20}_{50}_{40}_{name}.json",
-            # f"HFSD/records/record_{PARAMS['machine_num']}_{PARAMS['E_ave']}_{PARAMS['new_insert']}_{name}.json",
+        #    f"HFSD/record/record_{20}_{50}_{40}_{name}.json",
+            f"HFSD/records/record_{PARAMS['machine_num']}_{PARAMS['E_ave']}_{PARAMS['new_insert']}_{name}.json",
             "r",
         ) as f:
             return json.load(f)
@@ -45,14 +45,14 @@ results = {
         "Makespan": print_filter(record[name]["makespan"]),
         "slack_time": print_filter(record[name]["slack_time"]),
         "M_U": print_filter(record[name]["utiliaction"]),
-        "utiliaction_std": print_filter(record[name]["utiliaction_std"]),
+        
     }
     for name in name_list
 }
 
 episodes = np.arange(1, len(record["RL"]["makespan"]) + 1)
-metrics = ["Makespan", "slack_time", "M_U", "utiliaction_std"]
-titles = ["Makespan", "slack_time", "Machine Utilization", "utiliaction_std"]
+metrics = ["Makespan", "slack_time", "M_U"]
+titles = ["Makespan", "slack_time", "Machine Utilization"]
 
 fig, axs = plt.subplots(2, 2, figsize=(10, 8))
 axs = axs.flatten()

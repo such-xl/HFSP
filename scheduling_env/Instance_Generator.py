@@ -1,24 +1,12 @@
 import random
 import numpy as np
 
-# random.seed(42)
-# np.random.seed(42)
-
+random.seed(42)  
+np.random.seed(42) 
 
 def Instance_Generator(
     M_num, E_ave, New_insert
 ):  # 实时生成算法 作业插入、作业取消、作业操作修改和机器增加等不确定事件
-    """
-    :param M_num: Machine Number
-    :param Initial_job: initial job number
-    :param E_ave
-    :return: Processing time,A:New Job arrive time,
-                                D:Deliver time,
-                                M_num: Machine Number,
-                                Op_num: Operation Number,
-                                J_num:Job NUMBER
-                                EL:ergency level of each job
-    """
     job_info_list = []
     Initial_Job_num = 5
     Op_num = [

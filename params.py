@@ -2,7 +2,7 @@ import os
 import torch
 
 PARAMS = {
-    "num_episodes": 500,
+    "num_episodes": 300,
     "batch_size": 32,
     "actor_lr": 3e-4,
     "critic_lr": 3e-5,

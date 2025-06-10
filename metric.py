@@ -19,7 +19,7 @@ makespan = np.zeros((num_job, nM), dtype=float)  # makespan
 machine_num = PARAMS["machine_num"]
 E_ave = PARAMS["E_ave"]
 new_insert = PARAMS["new_insert"]
-save_dir = "HFSD/result/"
+save_dir = "HFSD/results/"
 path = f"{machine_num}_{E_ave}_{new_insert}.npz"
 
 # 初始化 PPO 并加载模型
@@ -234,6 +234,6 @@ def G_I_S(save_dir, path, METHODS):
     return gd_vals, igd_vals, spr_vals
 if __name__ == "__main__":
 
-    # ev()
+    ev()
     gd_vals, igd_vals, spr_vals = G_I_S(save_dir, path, METHODS)
     # save_to_excel(save_dir, gd_vals, igd_vals, spr_vals)

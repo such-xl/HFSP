@@ -39,7 +39,6 @@ def eval_model(env: TrainingEnv, method: str):
 def evaluate_all_machines(E_ave, job_num, machine_list):
     """ 针对一个 (E_ave, job_num) 评估多个机器数，并统一收集结果 """
     result_dict = {
-        "method": "RL",
         "job_num": job_num,
         "E_ave": E_ave
     }
@@ -69,8 +68,8 @@ def evaluate_all_machines(E_ave, job_num, machine_list):
             print(t,u,m)
 
         # 添加横向列
-        result_dict[f"slack_time_{machine_num}"] = np.mean(slack_time)
-        result_dict[f"util_{machine_num}"] = np.mean(utilization)
+        result_dict[f"slack_time_{machine_num}"] = round(np.mean(slack_time),2)
+        result_dict[f"util_{machine_num}"] = round(np.mean(utilization),2)
         result_dict[f"makespan_{machine_num}"] = np.mean(makespan)
 
     return result_dict
@@ -78,7 +77,7 @@ def evaluate_all_machines(E_ave, job_num, machine_list):
 if __name__ == "__main__":
     machine_list = [8, 12, 16]
     E_aves = [50, 100, 200]
-    new_inserts = [20, 30, 40]
+    new_inserts = [20, 30]
 
     result_records = []
     for job_num in new_inserts:

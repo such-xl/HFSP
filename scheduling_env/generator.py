@@ -3,8 +3,8 @@ import numpy as np
 import pickle
 
 
-random.seed(42)
-np.random.seed(42)
+random.seed(0)
+np.random.seed(0)
 
 
 def Instance_Generator(M_num, E_ave, New_insert):
@@ -102,10 +102,10 @@ job_nums = [20, 30, 40]
 E_aves = [50, 100, 200]
 origin_m = 8
 # #生成新机器
-# for job_num in job_nums:
-#     for E_ave in E_aves:
-#         generate_and_save_job_data(origin_m, E_ave, job_num)
-#         print(f"数据已保存：HFDS/8_12_16/{origin_m}_{E_ave}_{job_num}.pkl")
+for job_num in job_nums:
+    for E_ave in E_aves:
+        generate_and_save_job_data(origin_m, E_ave, job_num)
+        print(f"数据已保存：HFDS/8_12_16/{origin_m}_{E_ave}_{job_num}.pkl")
 
 # # # 增加机器
 for m in M_num:

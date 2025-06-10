@@ -9,7 +9,7 @@ def train_mappo(env, ppo, num_episodes):
         "makespan": [],
         "utiliaction": [],
         "slack_time": [],
-        "utiliaction_std": [],
+        "loss": [],
         "reward": [],
     }
 
@@ -34,13 +34,12 @@ def train_mappo(env, ppo, num_episodes):
             )
             global_state = next_global_state
             locals_state = next_locals_state
-
+        actor_loss, loss_U, loss_trad = ppo.update()
         record["makespan"].append(env.time_step)
         record["utiliaction"].append(env.compute_machine_utiliaction())
         record["slack_time"].append(env.compute_slack_time())
-        record["utiliaction_std"].append(env.U_R())
+        record["loss"].append(actor_loss)
         record["reward"].append(reward)
-        actor_loss, loss_U, loss_trad = ppo.update()
         print(
             f"Episode {episode + 1}/{num_episodes}:, Actor Loss {actor_loss:.4f}, loss_U {loss_U:.4f}, loss_tard {loss_trad:.4f},slack_time {env.compute_slack_time():.4f} make_span {env.time_step},actions:{actions}"
         )

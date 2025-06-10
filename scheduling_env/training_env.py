@@ -1,17 +1,8 @@
-"""
-多智能体作业调度训练环境
-1: 每个time_step 先忙碌agent加工一个time_step,后让所有空闲agent选择一个动作
-2: 判断所有job是否完成 over if done else repeat 1
-"""
-
 import numpy as np
 from .job import Job, JobList
 from .machine import Machine, MachineList
 from .Instance_Generator import Instance_Generator
 from .basic_scheduling_algorithms import SPT, SRPT, LPT, LRPT, CR, Random, EDD, FIFO
-
-np.random.seed(42)
-
 
 class TrainingEnv:
     # 初始化环境
